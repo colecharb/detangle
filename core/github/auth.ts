@@ -6,12 +6,14 @@ export interface DeviceFlowStart {
   expiresAt: number;
 }
 
+export interface TokenResponse {
+  accessToken: string;
+  accessTokenExpiresIn: number;
+  refreshToken: string;
+  refreshTokenExpiresIn: number;
+}
+
 const DEFAULT_BASE = 'https://github.com';
-// public_repo is the narrowest scope that covers our read-only use case.
-// Classic OAuth has no read-only-all-repos scope; private repos would
-// require 'repo' (which also grants write capability even though we
-// never call write endpoints).
-const SCOPE = 'public_repo';
 
 export class DeviceFlowDeniedError extends Error {
   constructor() {
@@ -27,6 +29,13 @@ export class DeviceFlowExpiredError extends Error {
   }
 }
 
+export class RefreshTokenExpiredError extends Error {
+  constructor() {
+    super('Refresh token is expired or invalid');
+    this.name = 'RefreshTokenExpiredError';
+  }
+}
+
 export async function startDeviceFlow(
   clientId: string,
   authBase: string = DEFAULT_BASE,
@@ -37,7 +46,7 @@ export async function startDeviceFlow(
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ client_id: clientId, scope: SCOPE }),
+    body: JSON.stringify({ client_id: clientId }),
   });
   if (!res.ok) {
     throw new Error(`Device flow start failed: ${res.status} ${res.statusText}`);
@@ -63,7 +72,7 @@ export async function pollForToken(
   start: DeviceFlowStart,
   signal?: AbortSignal,
   authBase: string = DEFAULT_BASE,
-): Promise<string> {
+): Promise<TokenResponse> {
   let interval = start.intervalSeconds;
   while (Math.floor(Date.now() / 1000) < start.expiresAt) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -85,12 +94,8 @@ export async function pollForToken(
     if (!res.ok) {
       throw new Error(`Device flow poll failed: ${res.status} ${res.statusText}`);
     }
-    const data = (await res.json()) as {
-      access_token?: string;
-      error?: string;
-      interval?: number;
-    };
-    if (data.access_token) return data.access_token;
+    const data = (await res.json()) as TokenEndpointResponse;
+    if (data.access_token) return toTokenResponse(data);
     switch (data.error) {
       case 'authorization_pending':
         continue;
@@ -106,6 +111,66 @@ export async function pollForToken(
     }
   }
   throw new DeviceFlowExpiredError();
+}
+
+export async function refreshAccessToken(
+  clientId: string,
+  refreshToken: string,
+  authBase: string = DEFAULT_BASE,
+): Promise<TokenResponse> {
+  const res = await fetch(`${authBase}/login/oauth/access_token`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Token refresh failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as TokenEndpointResponse;
+  if (data.error) {
+    // bad_refresh_token / bad_verification_code / etc — refresh token is unusable
+    throw new RefreshTokenExpiredError();
+  }
+  if (!data.access_token) {
+    throw new Error('Refresh response missing access_token');
+  }
+  return toTokenResponse(data);
+}
+
+interface TokenEndpointResponse {
+  access_token?: string;
+  expires_in?: number;
+  refresh_token?: string;
+  refresh_token_expires_in?: number;
+  token_type?: string;
+  error?: string;
+  interval?: number;
+}
+
+function toTokenResponse(data: TokenEndpointResponse): TokenResponse {
+  if (
+    !data.access_token ||
+    data.expires_in === undefined ||
+    !data.refresh_token ||
+    data.refresh_token_expires_in === undefined
+  ) {
+    throw new Error(
+      'Token response missing fields — is this a GitHub App with expiring tokens?',
+    );
+  }
+  return {
+    accessToken: data.access_token,
+    accessTokenExpiresIn: data.expires_in,
+    refreshToken: data.refresh_token,
+    refreshTokenExpiresIn: data.refresh_token_expires_in,
+  };
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
