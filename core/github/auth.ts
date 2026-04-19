@@ -75,7 +75,11 @@ export async function pollForToken(
 ): Promise<TokenResponse> {
   let interval = start.intervalSeconds;
   while (Math.floor(Date.now() / 1000) < start.expiresAt) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (signal?.aborted) {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
     await sleep(interval * 1000, signal);
 
     const res = await fetch(`${authBase}/login/oauth/access_token`, {
@@ -178,7 +182,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener('abort', () => {
       clearTimeout(timer);
-      reject(new DOMException('Aborted', 'AbortError'));
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      reject(err);
     });
   });
 }
