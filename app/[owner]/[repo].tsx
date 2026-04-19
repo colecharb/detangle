@@ -11,11 +11,12 @@ import {
 import {
   getRepo,
   listCommits,
+  listPulls,
   listRefs,
   type Commit,
   type Ref,
 } from '@core/storage';
-import { layoutGraph, type GraphLayout } from '@core/graph';
+import { layoutGraph, type GraphLayout, type Tier } from '@core/graph';
 import { useSession } from '@components/session';
 import { GraphCanvas } from '@components/GraphCanvas';
 import { CommitDetailSheet } from '@components/CommitDetailSheet';
@@ -34,7 +35,7 @@ export default function RepoScreen() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
   const [commits, setCommits] = useState<Commit[] | null>(null);
-  const [layout, setLayout] = useState<GraphLayout | null>(null);
+  const [layouts, setLayouts] = useState<Record<Tier, GraphLayout> | null>(null);
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
 
   const loadGraph = useCallback(async () => {
@@ -42,20 +43,28 @@ export default function RepoScreen() {
     const r = await getRepo(db, owner, repo);
     if (!r) {
       setCommits(null);
-      setLayout(null);
+      setLayouts(null);
       return;
     }
-    const [loadedCommits, loadedRefs] = await Promise.all([
+    const [loadedCommits, loadedRefs, loadedPulls] = await Promise.all([
       listCommits(db, r.id),
       listRefs(db, r.id),
+      listPulls(db, r.id),
     ]);
     setCommits(loadedCommits);
     if (loadedCommits.length === 0) {
-      setLayout(null);
+      setLayouts(null);
       return;
     }
-    const next = layoutGraph(loadedCommits, loadedRefs as Ref[], 'swimlane', 2);
-    setLayout(next);
+    const prTitles = new Map<number, string>();
+    for (const p of loadedPulls) prTitles.set(p.number, p.title);
+    const refs = loadedRefs as Ref[];
+    const next: Record<Tier, GraphLayout> = {
+      0: layoutGraph(loadedCommits, refs, 'swimlane', 0),
+      1: layoutGraph(loadedCommits, refs, 'swimlane', 1, { prTitles }),
+      2: layoutGraph(loadedCommits, refs, 'swimlane', 2),
+    };
+    setLayouts(next);
   }, [db, owner, repo]);
 
   const runSync = useCallback(async () => {
@@ -144,7 +153,9 @@ export default function RepoScreen() {
         {status === 'done' && result && (
           <Text className="mt-2 text-sm text-neutral-600">
             Synced {result.commitsAdded} new · {result.refsUpdated} ref
-            {result.refsUpdated === 1 ? '' : 's'} · {Math.round(result.durationMs / 100) / 10}s
+            {result.refsUpdated === 1 ? '' : 's'}
+            {result.prsEnriched > 0 ? ` · ${result.prsEnriched} PRs` : ''} ·{' '}
+            {Math.round(result.durationMs / 100) / 10}s
           </Text>
         )}
         {status === 'error' && error && (
@@ -153,8 +164,8 @@ export default function RepoScreen() {
       </View>
 
       <View className="flex-1">
-        {layout ? (
-          <GraphCanvas layout={layout} onCommitTap={setSelectedSha} />
+        {layouts ? (
+          <GraphCanvas layouts={layouts} onCommitTap={setSelectedSha} />
         ) : commits !== null && commits.length === 0 ? (
           <View className="flex-1 items-center justify-center">
             <Text className="text-neutral-500">No commits yet.</Text>

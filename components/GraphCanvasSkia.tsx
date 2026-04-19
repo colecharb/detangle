@@ -7,6 +7,7 @@ import {
   Circle,
   Group,
   Line,
+  Rect,
   Text as SkiaText,
   useFont,
 } from '@shopify/react-native-skia';
@@ -14,11 +15,19 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
   runOnJS,
+  useAnimatedReaction,
   useDerivedValue,
   useSharedValue,
   withDecay,
 } from 'react-native-reanimated';
-import type { CommitNode, GraphLayout } from '@core/graph';
+import type {
+  BucketNode,
+  ClusterNode,
+  CommitNode,
+  GraphLayout,
+  Tier,
+} from '@core/graph';
+import { TIER_THRESHOLDS } from '@core/graph';
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
@@ -26,11 +35,11 @@ const LABEL_MIN_SCALE = 0.8;
 const TAP_SLOP = 6;
 
 interface Props {
-  layout: GraphLayout;
+  layouts: { 0: GraphLayout; 1: GraphLayout; 2: GraphLayout };
   onCommitTap: (sha: string) => void;
 }
 
-export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
+export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const font = useFont(labelFontSource, 12);
   const [_size, setSize] = useState({ width: 0, height: 0 });
   const wrapperRef = useRef<View | null>(null);
@@ -41,11 +50,16 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
   const savedTx = useSharedValue(0);
   const savedTy = useSharedValue(0);
 
+  const activeTierSV = useSharedValue<Tier>(2);
+  const [jsActiveTier, setJsActiveTier] = useState<Tier>(2);
+
   useEffect(() => {
     translateX.value = 0;
     translateY.value = 0;
     scale.value = 1;
-  }, [layout, translateX, translateY, scale]);
+    activeTierSV.value = 2;
+    setJsActiveTier(2);
+  }, [layouts, translateX, translateY, scale, activeTierSV]);
 
   const transform = useDerivedValue(() => [
     { translateX: translateX.value },
@@ -53,22 +67,94 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
     { scale: scale.value },
   ]);
 
-  const labelOpacity = useDerivedValue(() =>
-    scale.value >= LABEL_MIN_SCALE ? 1 : 0,
+  const opacity2 = useDerivedValue(() => {
+    const s = scale.value;
+    const a = TIER_THRESHOLDS.tier1to2 - TIER_THRESHOLDS.hysteresis;
+    const b = TIER_THRESHOLDS.tier1to2 + TIER_THRESHOLDS.hysteresis;
+    const t = Math.max(0, Math.min(1, (s - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  });
+
+  const opacity1 = useDerivedValue(() => {
+    const s = scale.value;
+    const a0 = TIER_THRESHOLDS.tier0to1 - TIER_THRESHOLDS.hysteresis;
+    const b0 = TIER_THRESHOLDS.tier0to1 + TIER_THRESHOLDS.hysteresis;
+    const a1 = TIER_THRESHOLDS.tier1to2 - TIER_THRESHOLDS.hysteresis;
+    const b1 = TIER_THRESHOLDS.tier1to2 + TIER_THRESHOLDS.hysteresis;
+    const tUp = Math.max(0, Math.min(1, (s - a0) / (b0 - a0)));
+    const fUp = tUp * tUp * (3 - 2 * tUp);
+    const tDown = Math.max(0, Math.min(1, (s - a1) / (b1 - a1)));
+    const fDown = 1 - tDown * tDown * (3 - 2 * tDown);
+    return Math.min(fUp, fDown);
+  });
+
+  const opacity0 = useDerivedValue(() => {
+    const s = scale.value;
+    const a = TIER_THRESHOLDS.tier0to1 - TIER_THRESHOLDS.hysteresis;
+    const b = TIER_THRESHOLDS.tier0to1 + TIER_THRESHOLDS.hysteresis;
+    const t = Math.max(0, Math.min(1, (s - a) / (b - a)));
+    return 1 - t * t * (3 - 2 * t);
+  });
+
+  const tier2LabelOpacity = useDerivedValue(() => {
+    const base = scale.value >= LABEL_MIN_SCALE ? 1 : 0;
+    return base * opacity2.value;
+  });
+
+  const tier1LabelOpacity = useDerivedValue(() => {
+    const base = scale.value >= 0.5 ? 1 : 0;
+    return base * opacity1.value;
+  });
+
+  useAnimatedReaction(
+    () => scale.value,
+    (s) => {
+      const curr = activeTierSV.value;
+      const H = TIER_THRESHOLDS.hysteresis;
+      let next: Tier = curr;
+      const target: Tier =
+        s >= TIER_THRESHOLDS.tier1to2
+          ? 2
+          : s >= TIER_THRESHOLDS.tier0to1
+            ? 1
+            : 0;
+      if (target !== curr) {
+        if (target > curr) {
+          if (curr === 0 && s > TIER_THRESHOLDS.tier0to1 + H) next = 1;
+          else if (curr === 1 && s > TIER_THRESHOLDS.tier1to2 + H) next = 2;
+        } else {
+          if (curr === 2 && s < TIER_THRESHOLDS.tier1to2 - H) next = 1;
+          else if (curr === 1 && s < TIER_THRESHOLDS.tier0to1 - H) next = 0;
+        }
+      }
+      if (next !== curr) {
+        activeTierSV.value = next;
+        runOnJS(setJsActiveTier)(next);
+      }
+    },
   );
 
-  const nodes: CommitNode[] = useMemo(
-    () => (layout.tier === 2 ? (layout.nodes as CommitNode[]) : []),
-    [layout],
+  const commitNodes = useMemo(
+    () => layouts[2].nodes as CommitNode[],
+    [layouts],
+  );
+  const clusterNodes = useMemo(
+    () => layouts[1].nodes as ClusterNode[],
+    [layouts],
+  );
+  const bucketNodes = useMemo(
+    () => layouts[0].nodes as BucketNode[],
+    [layouts],
   );
 
   const handleTapAt = useCallback(
     (sx: number, sy: number) => {
+      if (jsActiveTier !== 2) return;
       const lx = (sx - translateX.value) / scale.value;
       const ly = (sy - translateY.value) / scale.value;
       let best: CommitNode | null = null;
       let bestDist = Infinity;
-      for (const n of nodes) {
+      for (const n of commitNodes) {
         const dx = n.x - lx;
         const dy = n.y - ly;
         const d2 = dx * dx + dy * dy;
@@ -80,7 +166,7 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
       }
       if (best) onCommitTap(best.sha);
     },
-    [nodes, onCommitTap, translateX, translateY, scale],
+    [commitNodes, jsActiveTier, onCommitTap, translateX, translateY, scale],
   );
 
   const pan = useMemo(
@@ -148,7 +234,6 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
       cancelAnimation(translateX);
       cancelAnimation(translateY);
       if (ev.ctrlKey) {
-        // Pinch (trackpad) or ctrl+scroll — zoom around cursor.
         const rect = el.getBoundingClientRect();
         const fx = ev.clientX - rect.left;
         const fy = ev.clientY - rect.top;
@@ -159,7 +244,6 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
         translateY.value = fy - (fy - translateY.value) * factor;
         scale.value = newScale;
       } else {
-        // Two-finger swipe / scroll wheel — pan.
         translateX.value -= ev.deltaX;
         translateY.value -= ev.deltaY;
       }
@@ -169,6 +253,9 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
   }, [scale, translateX, translateY]);
 
   const showLabels = font !== null;
+  const mountTier0 = jsActiveTier <= 1;
+  const mountTier1 = jsActiveTier <= 2 && jsActiveTier >= 0;
+  const mountTier2 = jsActiveTier >= 1;
 
   return (
     <View
@@ -183,30 +270,74 @@ export default function GraphCanvasSkia({ layout, onCommitTap }: Props) {
         <View style={{ flex: 1 }}>
           <Canvas style={{ flex: 1 }}>
             <Group transform={transform}>
-              {layout.edges.map((edge, i) => (
-                <Line
-                  key={i}
-                  p1={edge.from}
-                  p2={edge.to}
-                  color={edge.kind === 'merge' ? '#525252' : '#a3a3a3'}
-                  strokeWidth={edge.kind === 'merge' ? 1.5 : 1}
-                />
-              ))}
-              {nodes.map((n) => (
-                <Circle key={n.sha} cx={n.x} cy={n.y} r={n.radius} color={n.color} />
-              ))}
-              {showLabels &&
-                nodes.map((n) => (
-                  <SkiaText
-                    key={`t-${n.sha}`}
-                    x={n.x + n.radius + 6}
-                    y={n.y + 4}
-                    text={n.label ?? ''}
-                    font={font}
-                    color="#171717"
-                    opacity={labelOpacity}
-                  />
-                ))}
+              {mountTier0 && (
+                <Group opacity={opacity0}>
+                  {bucketNodes.map((b) => (
+                    <Rect
+                      key={b.id}
+                      x={b.x}
+                      y={b.y}
+                      width={b.width}
+                      height={b.height}
+                      color={b.color}
+                    />
+                  ))}
+                </Group>
+              )}
+              {mountTier1 && (
+                <Group opacity={opacity1}>
+                  {clusterNodes.map((c) => (
+                    <Rect
+                      key={c.id}
+                      x={c.x}
+                      y={c.y}
+                      width={c.width}
+                      height={c.height}
+                      color={c.color}
+                    />
+                  ))}
+                  {showLabels &&
+                    clusterNodes.map((c) => (
+                      <SkiaText
+                        key={`t-${c.id}`}
+                        x={c.x + c.width + 6}
+                        y={c.y + 12}
+                        text={c.label}
+                        font={font}
+                        color="#171717"
+                        opacity={tier1LabelOpacity}
+                      />
+                    ))}
+                </Group>
+              )}
+              {mountTier2 && (
+                <Group opacity={opacity2}>
+                  {layouts[2].edges.map((edge, i) => (
+                    <Line
+                      key={i}
+                      p1={edge.from}
+                      p2={edge.to}
+                      color={edge.kind === 'merge' ? '#525252' : '#a3a3a3'}
+                      strokeWidth={edge.kind === 'merge' ? 1.5 : 1}
+                    />
+                  ))}
+                  {commitNodes.map((n) => (
+                    <Circle key={n.sha} cx={n.x} cy={n.y} r={n.radius} color={n.color} />
+                  ))}
+                  {showLabels &&
+                    commitNodes.map((n) => (
+                      <SkiaText
+                        key={`t-${n.sha}`}
+                        x={n.x + n.radius + 6}
+                        y={n.y + 4}
+                        text={n.label ?? ''}
+                        font={font}
+                        color="#171717"
+                        opacity={tier2LabelOpacity}
+                      />
+                    ))}
+                </Group>
+              )}
             </Group>
           </Canvas>
         </View>

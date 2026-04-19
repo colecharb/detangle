@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import type { GraphLayout } from '@core/graph';
 
 export interface GraphCanvasProps {
-  layout: GraphLayout;
+  layouts: { 0: GraphLayout; 1: GraphLayout; 2: GraphLayout };
   onCommitTap: (sha: string) => void;
 }
 
