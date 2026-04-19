@@ -26,8 +26,13 @@ export interface PullSummary {
   title: string;
 }
 
+export interface ReposWithInstallations {
+  repos: RepoSummary[];
+  installationCount: number;
+}
+
 export interface GitHubClient {
-  listRepos(): Promise<RepoSummary[]>;
+  listRepos(): Promise<ReposWithInstallations>;
   listRefs(owner: string, name: string): Promise<RefSummary[]>;
   listCommits(
     owner: string,
@@ -143,9 +148,12 @@ export function createClient(getToken: () => Promise<string>): GitHubClient {
           });
         }
       }
-      return Array.from(byKey.values()).sort((a, b) =>
-        `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`),
-      );
+      return {
+        repos: Array.from(byKey.values()).sort((a, b) =>
+          `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`),
+        ),
+        installationCount: installations.length,
+      };
     },
 
     async listRefs(owner, name) {

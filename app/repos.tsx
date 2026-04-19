@@ -3,17 +3,28 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { createClient, GitHubAuthError, type RepoSummary } from '@core/github';
+import * as Linking from 'expo-linking';
+import {
+  createClient,
+  GitHubAuthError,
+  type ReposWithInstallations,
+} from '@core/github';
 import { useSession } from '@components/session';
+
+const APP_SLUG = process.env.EXPO_PUBLIC_GITHUB_APP_SLUG ?? '';
+const INSTALL_URL = APP_SLUG
+  ? `https://github.com/apps/${APP_SLUG}/installations/new`
+  : null;
 
 export default function ReposScreen() {
   const { hasToken, loading: sessionLoading, getAccessToken, clearTokens } = useSession();
-  const [repos, setRepos] = useState<RepoSummary[] | null>(null);
+  const [data, setData] = useState<ReposWithInstallations | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -27,8 +38,8 @@ export default function ReposScreen() {
           if (!t) throw new GitHubAuthError();
           return t;
         });
-        const list = await client.listRepos();
-        if (!cancelled) setRepos(list);
+        const result = await client.listRepos();
+        if (!cancelled) setData(result);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof GitHubAuthError) {
@@ -44,13 +55,22 @@ export default function ReposScreen() {
   }, [hasToken, getAccessToken, clearTokens]);
 
   const filtered = useMemo(() => {
-    if (!repos) return null;
+    if (!data) return null;
     const q = query.trim().toLowerCase();
-    if (!q) return repos;
-    return repos.filter((r) =>
+    if (!q) return data.repos;
+    return data.repos.filter((r) =>
       `${r.owner}/${r.name}`.toLowerCase().includes(q),
     );
-  }, [repos, query]);
+  }, [data, query]);
+
+  const openInstall = async () => {
+    if (!INSTALL_URL) return;
+    if (Platform.OS === 'web') {
+      window.open(INSTALL_URL, '_blank', 'noopener,noreferrer');
+    } else {
+      await Linking.openURL(INSTALL_URL);
+    }
+  };
 
   if (sessionLoading) {
     return (
@@ -63,6 +83,9 @@ export default function ReposScreen() {
   if (!hasToken) {
     return <Redirect href="/" />;
   }
+
+  const showInstallPrompt =
+    data !== null && (data.installationCount === 0 || data.repos.length === 0);
 
   return (
     <View className="flex-1 bg-white pt-16">
@@ -80,17 +103,42 @@ export default function ReposScreen() {
         />
       </View>
 
-      {error && (
-        <Text className="px-6 text-red-600">{error}</Text>
-      )}
+      {error && <Text className="px-6 text-red-600">{error}</Text>}
 
-      {!filtered && !error && (
+      {!data && !error && (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator />
         </View>
       )}
 
-      {filtered && (
+      {showInstallPrompt && (
+        <View className="px-6 py-8">
+          <Text className="text-base text-neutral-800">
+            {data!.installationCount === 0
+              ? "You haven't installed the Detangle GitHub App yet."
+              : 'The Detangle GitHub App is installed, but no repositories are shared with it.'}
+          </Text>
+          <Text className="mt-2 text-sm text-neutral-500">
+            Install (or update the install) and pick which repos to share.
+          </Text>
+          {INSTALL_URL ? (
+            <Pressable
+              onPress={openInstall}
+              className="mt-4 rounded-lg bg-neutral-900 p-3"
+            >
+              <Text className="text-center font-semibold text-white">
+                Install / configure on GitHub
+              </Text>
+            </Pressable>
+          ) : (
+            <Text className="mt-2 text-xs text-red-600">
+              EXPO_PUBLIC_GITHUB_APP_SLUG is not set — can&apos;t link you to the install page.
+            </Text>
+          )}
+        </View>
+      )}
+
+      {filtered && !showInstallPrompt && (
         <FlatList
           data={filtered}
           extraData={query}
