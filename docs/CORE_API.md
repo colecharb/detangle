@@ -153,6 +153,7 @@ export interface PullSummary { number: number; mergeCommitSha: string | null; ti
 export interface SyncResult {
   commitsAdded: number;
   refsUpdated: number;
+  prsEnriched: number;    // 0 if enrichment was skipped or errored
   durationMs: number;
 }
 

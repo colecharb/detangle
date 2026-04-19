@@ -8,6 +8,7 @@ import type { CommitSummary, GitHubClient } from './client';
 export interface SyncResult {
   commitsAdded: number;
   refsUpdated: number;
+  prsEnriched: number;
   durationMs: number;
 }
 
@@ -91,9 +92,19 @@ export async function syncRepo(
   const syncedAt = Math.floor(Date.now() / 1000);
   await setLastSynced(db, repo.id, syncedAt);
 
+  onProgress?.('pulls', 0);
+  let prsEnriched = 0;
+  try {
+    const { commitsUpdated } = await enrichWithPullRequests(client, db, owner, name);
+    prsEnriched = commitsUpdated;
+  } catch (err) {
+    console.warn('[sync] PR enrichment failed:', err);
+  }
+
   return {
     commitsAdded,
     refsUpdated: changedRefs.length,
+    prsEnriched,
     durationMs: Date.now() - startedAt,
   };
 }
