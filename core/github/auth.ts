@@ -7,7 +7,11 @@ export interface DeviceFlowStart {
 }
 
 const DEFAULT_BASE = 'https://github.com';
-const SCOPE = 'repo';
+// public_repo is the narrowest scope that covers our read-only use case.
+// Classic OAuth has no read-only-all-repos scope; private repos would
+// require 'repo' (which also grants write capability even though we
+// never call write endpoints).
+const SCOPE = 'public_repo';
 
 export class DeviceFlowDeniedError extends Error {
   constructor() {
