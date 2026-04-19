@@ -15,3 +15,8 @@ export interface PlatformStorage {
   deleteSecret(key: string): Promise<void>;
   openDatabase(name: string): Promise<Database>;
 }
+
+// The runtime value is provided by storage.native.ts / storage.web.ts via
+// Metro's platform-specific resolution. This declaration exists so
+// consumers importing from '@platform/storage' get the typed surface.
+export declare const storage: PlatformStorage;
