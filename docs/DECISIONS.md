@@ -6,6 +6,23 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
+## 2026-04-19 — Web Metro needs `wasm` in assetExts
+
+**Decision:** `metro.config.js` adds `'wasm'` to `config.resolver.assetExts` so expo-sqlite's web worker can import its WASM binary.
+
+**Rationale:**
+- expo-sqlite 16 (the SDK 54 version) has `import wasmModule from './wa-sqlite/wa-sqlite.wasm';` inside the web worker.
+- Metro's default `assetExts` in SDK 54 doesn't include `wasm`, so resolution fails during web bundling.
+- Adding `wasm` treats it as an asset (copy + return URL) which is what the worker expects.
+
+**Alternatives considered:**
+- Custom Metro transformer for `.wasm` — rejected; assetExts is the simple, supported path.
+- Wait for expo-sqlite to fix the issue upstream — rejected; trivial one-line workaround.
+
+**Revisit when:** Upgrading to a newer SDK where the default `assetExts` might already include `wasm`. If so, the workaround is a no-op but harmless.
+
+---
+
 ## 2026-04-19 — Scaffold on Expo SDK 54, not 55
 
 **Decision:** Phase 0 uses Expo SDK 54 (what `create-expo-app@latest` installs today), not SDK 55 as `ARCHITECTURE.md` originally targeted.
