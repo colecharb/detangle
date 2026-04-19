@@ -146,12 +146,14 @@ export default function ReposScreen() {
           ItemSeparatorComponent={() => <View className="h-px bg-neutral-200" />}
           renderItem={({ item }) => (
             <Link href={`/${item.owner}/${item.name}`} asChild>
-              <Pressable className="px-6 py-4 active:bg-neutral-100">
+              <Pressable className="flex-row items-center gap-2 px-6 py-4 active:bg-neutral-100">
                 <Text className="text-base font-semibold text-neutral-900">
                   {item.owner}/{item.name}
                 </Text>
                 {item.isPrivate && (
-                  <Text className="mt-1 text-xs text-neutral-500">Private</Text>
+                  <Text className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs text-neutral-500">
+                    Private
+                  </Text>
                 )}
               </Pressable>
             </Link>
