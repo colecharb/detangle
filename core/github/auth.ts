@@ -6,8 +6,7 @@ export interface DeviceFlowStart {
   expiresAt: number;
 }
 
-const DEVICE_CODE_URL = 'https://github.com/login/device/code';
-const TOKEN_URL = 'https://github.com/login/oauth/access_token';
+const DEFAULT_BASE = 'https://github.com';
 const SCOPE = 'repo';
 
 export class DeviceFlowDeniedError extends Error {
@@ -24,8 +23,11 @@ export class DeviceFlowExpiredError extends Error {
   }
 }
 
-export async function startDeviceFlow(clientId: string): Promise<DeviceFlowStart> {
-  const res = await fetch(DEVICE_CODE_URL, {
+export async function startDeviceFlow(
+  clientId: string,
+  authBase: string = DEFAULT_BASE,
+): Promise<DeviceFlowStart> {
+  const res = await fetch(`${authBase}/login/device/code`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -56,13 +58,14 @@ export async function pollForToken(
   clientId: string,
   start: DeviceFlowStart,
   signal?: AbortSignal,
+  authBase: string = DEFAULT_BASE,
 ): Promise<string> {
   let interval = start.intervalSeconds;
   while (Math.floor(Date.now() / 1000) < start.expiresAt) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     await sleep(interval * 1000, signal);
 
-    const res = await fetch(TOKEN_URL, {
+    const res = await fetch(`${authBase}/login/oauth/access_token`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
