@@ -6,6 +6,66 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
+## 2026-04-19 — Scaffold on Expo SDK 54, not 55
+
+**Decision:** Phase 0 uses Expo SDK 54 (what `create-expo-app@latest` installs today), not SDK 55 as `ARCHITECTURE.md` originally targeted.
+
+**Rationale:**
+- SDK 55 is not yet released as of scaffolding date.
+- SDK 54 ships React 19.1, React Native 0.81, Reanimated 4.1, and all other libraries we need with compatible versions.
+- Upgrading to 55 when it ships is a standard `npx expo install --fix` flow — no architectural commitment.
+
+**Alternatives considered:**
+- Wait for SDK 55 — rejected; blocks all Phase 1+ work indefinitely.
+- Use SDK 53 (more stable) — rejected; no reason to downgrade.
+
+---
+
+## 2026-04-19 — Start from `tabs` template, delete tabs
+
+**Decision:** Scaffold via `npx create-expo-app@latest --template tabs`, then delete template's `app/(tabs)/`, `app/modal.tsx`, `components/`, and `constants/` before writing our own routes.
+
+**Rationale:**
+- `tabs` template pre-wires Expo Router + TypeScript + `typedRoutes` + splash/icon assets — less manual setup than `blank`.
+- We replace all routes in Phase 1 anyway; deleting a few files is cheaper than hand-wiring Router.
+
+**Alternatives considered:**
+- `--template blank` — rejected; would need to hand-configure Expo Router entry point and typed routes.
+- `--template default` — name inconsistent across SDK versions; `tabs` is stable.
+
+---
+
+## 2026-04-19 — Reanimated 4 uses `react-native-worklets/plugin`
+
+**Decision:** `babel.config.js` plugins array ends with `react-native-worklets/plugin`, not the deprecated `react-native-reanimated/plugin`.
+
+**Rationale:**
+- Reanimated 4 extracted worklet compilation to the separate `react-native-worklets` package.
+- The old plugin name still works as a forward-compat shim but is not the canonical path.
+- SDK 54 already installs `react-native-worklets` as a direct dependency.
+
+**Alternatives considered:**
+- Use the legacy `react-native-reanimated/plugin` alias — rejected; works today but is deprecated.
+
+---
+
+## 2026-04-19 — expo-sqlite on web needs COOP/COEP headers in production
+
+**Decision:** Production web hosting must serve `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers so expo-sqlite's OPFS persistence works (requires `SharedArrayBuffer`).
+
+**Rationale:**
+- `expo-sqlite` web uses WASM with OPFS-backed storage; `SharedArrayBuffer` requires cross-origin isolation.
+- Dev server handles this automatically; static hosts (Vercel, Netlify, EAS Hosting) need explicit header config.
+- Without these headers, web falls back to in-memory SQLite and loses data on reload.
+
+**Alternatives considered:**
+- IndexedDB adapter on web — deferred; keep as fallback if a host can't be made COOP/COEP compliant.
+- Session-only cache on web — rejected; user expects persistence across reloads.
+
+**Revisit when:** Phase 7 (shipping). Confirm the chosen host supports these headers before launch.
+
+---
+
 ## 2026-04-19 — No backend in v1
 
 **Decision:** The app is client-only. No servers, no Supabase, no edge functions.
