@@ -7,7 +7,7 @@ Living status file. Update when finishing a phase, or when anything meaningful c
 | Phase | State | Notes |
 |---|---|---|
 | 0 — Scaffolding | complete (2026-04-19) | Expo SDK 54 (SDK 55 not yet released) |
-| 1 — Auth & Sync | not started | |
+| 1 — Auth & Sync | complete (2026-04-19) | |
 | 2 — Graph Canvas + Tier 2 | not started | |
 | 3 — Semantic Zoom | not started | |
 | 4 — Other Views | not started | |
@@ -16,6 +16,18 @@ Living status file. Update when finishing a phase, or when anything meaningful c
 | 7 — Ship | not started | |
 
 ## Changelog
+
+### 2026-04-19 — Phase 1 complete
+- GitHub OAuth device flow end-to-end: `core/github/auth.ts` starts flow and polls; typed errors for denied/expired/rate-limit.
+- REST client (`core/github/client.ts`) with authed fetch, pagination via `Link: rel="next"`, and typed 401/403/429 errors.
+- Sync (`core/github/sync.ts`) walks only refs whose tip SHA changed; stops paginating a branch on first known SHA; also extracts `pr_number` from merge/squash commit messages.
+- SQLite accessors (`core/storage/repos.ts`, `commits.ts`, `refs.ts`) fully implemented with idempotent upserts; `listCommits` supports the full `CommitFilter`.
+- Session provider opens DB + migrates + loads token once on mount; secure-store on native, IndexedDB on web — token survives restart.
+- Routes: landing (`/`), repo picker (`/repos` with search filter and sign-out), sync page (`/[owner]/[repo]` with progress + resync).
+- DeviceFlowModal copies code to clipboard, opens verification URL via expo-linking, polls in background, handles abort on close.
+- Metro: added `wasm` to `assetExts` so expo-sqlite's web worker can import its `.wasm` module. Without this, the web bundle fails.
+- `tsc --noEmit` clean. Core purity grep clean. Web bundle + static export succeed; dev server returns 200 on `/`.
+- Not manually exercised end-to-end (requires a live browser + real GitHub auth). Structurally correct based on typecheck + successful bundle.
 
 ### 2026-04-19 — Phase 0 complete
 - Scaffolded Expo universal app from `tabs` template, renamed to `detangle`.
