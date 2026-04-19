@@ -75,47 +75,24 @@ export const storage: PlatformStorage = {
     db.close();
   },
   async openDatabase(name) {
-    // When expo-sqlite's web worker fails to acquire OPFS access handles
-    // (e.g. a prior crashed load left them locked), retrying inside the
-    // same worker keeps failing with "Invalid VFS state" — the VFS is a
-    // module-level singleton in the worker and can't be reset from
-    // outside. The only way back to a good state is a fresh worker,
-    // which means reloading the page. A sessionStorage flag prevents an
-    // infinite reload loop if the wipe doesn't actually help.
-    const RESET_FLAG = 'detangle-opfs-reset';
     try {
       const db = await SQLite.openDatabaseAsync(name);
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(RESET_FLAG);
       return wrap(db);
     } catch (err) {
-      const alreadyReset =
-        typeof sessionStorage !== 'undefined' &&
-        sessionStorage.getItem(RESET_FLAG) === '1';
-      if (alreadyReset) {
-        sessionStorage.removeItem(RESET_FLAG);
-        throw err;
-      }
-      console.warn('[detangle] DB open failed; wiping OPFS and reloading:', err);
-      try {
-        const opfs = await navigator.storage.getDirectory();
-        // @ts-expect-error values() is supported on FileSystemDirectoryHandle but not in lib.dom yet
-        for await (const entry of opfs.values()) {
-          try {
-            await opfs.removeEntry((entry as FileSystemHandle).name, {
-              recursive: true,
-            });
-          } catch {
-            // best effort
-          }
-        }
-      } catch {
-        // best effort
-      }
-      sessionStorage.setItem(RESET_FLAG, '1');
-      window.location.reload();
-      // Stall so the caller never proceeds before reload happens
-      await new Promise(() => {});
-      throw err;
+      // expo-sqlite on web requires OPFS access handles. Some browsers
+      // (Firefox in particular) can leave those handles in a stuck state
+      // that survives page reloads and can't be cleared from JS. When
+      // that happens, fall back to an in-memory DB so the app still
+      // works for the current session. Data is lost on reload but the
+      // token stays in IndexedDB (separate path), so re-sync is the only
+      // cost.
+      console.warn(
+        '[detangle] OPFS-backed SQLite failed; using an in-memory DB. ' +
+          'Data will not persist across page reloads.',
+        err,
+      );
+      const db = await SQLite.openDatabaseAsync(':memory:');
+      return wrap(db);
     }
   },
 };
