@@ -59,9 +59,10 @@ export class GitHubRateLimitError extends Error {
   }
 }
 
-export function createClient(token: string): GitHubClient {
+export function createClient(getToken: () => Promise<string>): GitHubClient {
   async function request(path: string): Promise<{ body: unknown; linkHeader: string | null }> {
     const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+    const token = await getToken();
     const res = await fetch(url, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -101,23 +102,50 @@ export function createClient(token: string): GitHubClient {
     return all;
   }
 
+  async function requestPagedNested<T>(path: string, key: string): Promise<T[]> {
+    const all: T[] = [];
+    let next: string | null = path;
+    while (next) {
+      const { body, linkHeader }: { body: unknown; linkHeader: string | null } =
+        await request(next);
+      const items = (body as Record<string, unknown>)[key] as T[] | undefined;
+      if (items) all.push(...items);
+      next = parseNext(linkHeader);
+    }
+    return all;
+  }
+
   return {
     async listRepos() {
+      type RawInstallation = { id: number };
       type RawRepo = {
         owner: { login: string };
         name: string;
         private: boolean;
         default_branch: string;
       };
-      const raw = await requestPaged<RawRepo>(
-        '/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member',
+      const installations = await requestPagedNested<RawInstallation>(
+        '/user/installations?per_page=100',
+        'installations',
       );
-      return raw.map((r) => ({
-        owner: r.owner.login,
-        name: r.name,
-        isPrivate: r.private,
-        defaultBranch: r.default_branch,
-      }));
+      const byKey = new Map<string, RepoSummary>();
+      for (const inst of installations) {
+        const repos = await requestPagedNested<RawRepo>(
+          `/user/installations/${inst.id}/repositories?per_page=100`,
+          'repositories',
+        );
+        for (const r of repos) {
+          byKey.set(`${r.owner.login}/${r.name}`, {
+            owner: r.owner.login,
+            name: r.name,
+            isPrivate: r.private,
+            defaultBranch: r.default_branch,
+          });
+        }
+      }
+      return Array.from(byKey.values()).sort((a, b) =>
+        `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`),
+      );
     },
 
     async listRefs(owner, name) {
