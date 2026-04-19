@@ -12,23 +12,27 @@ import { createClient, GitHubAuthError, type RepoSummary } from '@core/github';
 import { useSession } from '@components/session';
 
 export default function ReposScreen() {
-  const { token, loading: sessionLoading, clearToken } = useSession();
+  const { hasToken, loading: sessionLoading, getAccessToken, clearTokens } = useSession();
   const [repos, setRepos] = useState<RepoSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
-    if (!token) return;
+    if (!hasToken) return;
     let cancelled = false;
     (async () => {
       try {
-        const client = createClient(token);
+        const client = createClient(async () => {
+          const t = await getAccessToken();
+          if (!t) throw new GitHubAuthError();
+          return t;
+        });
         const list = await client.listRepos();
         if (!cancelled) setRepos(list);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof GitHubAuthError) {
-          await clearToken();
+          await clearTokens();
           return;
         }
         setError(err instanceof Error ? err.message : 'Failed to load repos');
@@ -37,7 +41,7 @@ export default function ReposScreen() {
     return () => {
       cancelled = true;
     };
-  }, [token, clearToken]);
+  }, [hasToken, getAccessToken, clearTokens]);
 
   const filtered = useMemo(() => {
     if (!repos) return null;
@@ -56,7 +60,7 @@ export default function ReposScreen() {
     );
   }
 
-  if (!token) {
+  if (!hasToken) {
     return <Redirect href="/" />;
   }
 
@@ -109,7 +113,7 @@ export default function ReposScreen() {
       )}
 
       <Pressable
-        onPress={clearToken}
+        onPress={clearTokens}
         className="m-6 rounded-lg border border-neutral-300 p-3"
       >
         <Text className="text-center text-neutral-700">Sign out</Text>

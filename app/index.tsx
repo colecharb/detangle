@@ -7,7 +7,7 @@ import { useSession } from '@components/session';
 const CLIENT_ID = process.env.EXPO_PUBLIC_GITHUB_CLIENT_ID ?? '';
 
 export default function Landing() {
-  const { token, loading, setToken } = useSession();
+  const { hasToken, loading, setTokens } = useSession();
   const [modalVisible, setModalVisible] = useState(false);
 
   if (loading) {
@@ -18,7 +18,7 @@ export default function Landing() {
     );
   }
 
-  if (token) {
+  if (hasToken) {
     return <Redirect href="/repos" />;
   }
 
@@ -32,7 +32,7 @@ export default function Landing() {
       {!CLIENT_ID ? (
         <Text className="mt-8 text-center text-red-600">
           EXPO_PUBLIC_GITHUB_CLIENT_ID is not set. Copy `.env.example` to `.env` and fill
-          in your GitHub OAuth app's Client ID.
+          in your GitHub App's Client ID.
         </Text>
       ) : (
         <Pressable
@@ -47,8 +47,8 @@ export default function Landing() {
         visible={modalVisible}
         clientId={CLIENT_ID}
         onClose={() => setModalVisible(false)}
-        onSuccess={async (t) => {
-          await setToken(t);
+        onSuccess={async (bundle) => {
+          await setTokens(bundle);
           setModalVisible(false);
         }}
       />

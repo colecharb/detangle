@@ -12,19 +12,29 @@ import { useSession } from '@components/session';
 
 export default function RepoScreen() {
   const { owner, repo } = useLocalSearchParams<{ owner: string; repo: string }>();
-  const { db, token, loading: sessionLoading, clearToken } = useSession();
+  const {
+    db,
+    hasToken,
+    loading: sessionLoading,
+    getAccessToken,
+    clearTokens,
+  } = useSession();
   const [status, setStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
   const [result, setResult] = useState<SyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
 
   const runSync = useCallback(async () => {
-    if (!db || !token || !owner || !repo) return;
+    if (!db || !hasToken || !owner || !repo) return;
     setStatus('syncing');
     setError(null);
     setProgress('');
     try {
-      const client = createClient(token);
+      const client = createClient(async () => {
+        const t = await getAccessToken();
+        if (!t) throw new GitHubAuthError();
+        return t;
+      });
       const res = await syncRepo(client, db, owner, repo, (stage, count) => {
         setProgress(`${stage} (${count})`);
       });
@@ -32,7 +42,7 @@ export default function RepoScreen() {
       setStatus('done');
     } catch (err) {
       if (err instanceof GitHubAuthError) {
-        await clearToken();
+        await clearTokens();
         return;
       }
       if (err instanceof GitHubRateLimitError) {
@@ -46,13 +56,13 @@ export default function RepoScreen() {
       }
       setStatus('error');
     }
-  }, [db, token, owner, repo, clearToken]);
+  }, [db, hasToken, owner, repo, getAccessToken, clearTokens]);
 
   useEffect(() => {
-    if (status === 'idle' && db && token) {
+    if (status === 'idle' && db && hasToken) {
       void runSync();
     }
-  }, [status, db, token, runSync]);
+  }, [status, db, hasToken, runSync]);
 
   if (sessionLoading) {
     return (
@@ -62,7 +72,7 @@ export default function RepoScreen() {
     );
   }
 
-  if (!token) {
+  if (!hasToken) {
     return <Redirect href="/" />;
   }
 
