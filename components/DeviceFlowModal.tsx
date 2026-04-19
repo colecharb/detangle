@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, Text, View } from 'react-native';
 import {
   DeviceFlowDeniedError,
   DeviceFlowExpiredError,
@@ -78,7 +78,12 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
 
   const openVerification = async () => {
     if (!start) return;
-    await Linking.openURL(start.verificationUri);
+    if (Platform.OS === 'web') {
+      // Open in a new tab so the Detangle tab keeps polling.
+      window.open(start.verificationUri, '_blank', 'noopener,noreferrer');
+    } else {
+      await Linking.openURL(start.verificationUri);
+    }
   };
 
   return (
