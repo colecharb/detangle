@@ -75,17 +75,27 @@ export const storage: PlatformStorage = {
     db.close();
   },
   async openDatabase(name) {
+    // When expo-sqlite's web worker fails to acquire OPFS access handles
+    // (e.g. a prior crashed load left them locked), retrying inside the
+    // same worker keeps failing with "Invalid VFS state" — the VFS is a
+    // module-level singleton in the worker and can't be reset from
+    // outside. The only way back to a good state is a fresh worker,
+    // which means reloading the page. A sessionStorage flag prevents an
+    // infinite reload loop if the wipe doesn't actually help.
+    const RESET_FLAG = 'detangle-opfs-reset';
     try {
       const db = await SQLite.openDatabaseAsync(name);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(RESET_FLAG);
       return wrap(db);
     } catch (err) {
-      // expo-sqlite on web uses OPFS with exclusive sync access handles.
-      // If a prior page load crashed or the browser didn't release the
-      // handle cleanly, the next open fails. The worker re-wraps the
-      // error so its message is often lossy ("Unknown" /
-      // "NoModificationAllowedError" / etc). Since any failure here
-      // means the DB is unusable, do a full OPFS wipe and retry once.
-      console.warn('[detangle] DB open failed, wiping OPFS and retrying:', err);
+      const alreadyReset =
+        typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(RESET_FLAG) === '1';
+      if (alreadyReset) {
+        sessionStorage.removeItem(RESET_FLAG);
+        throw err;
+      }
+      console.warn('[detangle] DB open failed; wiping OPFS and reloading:', err);
       try {
         const opfs = await navigator.storage.getDirectory();
         // @ts-expect-error values() is supported on FileSystemDirectoryHandle but not in lib.dom yet
@@ -101,8 +111,11 @@ export const storage: PlatformStorage = {
       } catch {
         // best effort
       }
-      const db = await SQLite.openDatabaseAsync(name);
-      return wrap(db);
+      sessionStorage.setItem(RESET_FLAG, '1');
+      window.location.reload();
+      // Stall so the caller never proceeds before reload happens
+      await new Promise(() => {});
+      throw err;
     }
   },
 };
