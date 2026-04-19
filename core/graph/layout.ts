@@ -2,12 +2,28 @@ import type { Commit } from '../storage/commits';
 import type { Ref } from '../storage/refs';
 import { topoSort } from './topology';
 import { assignLanes } from './laneAssignment';
-import type { CommitNode, Edge, GraphLayout, Tier, ViewMode } from './types';
+import { isoWeekKey, isoWeekStart, weekKeysBetween } from './time';
+import type {
+  BucketNode,
+  CommitNode,
+  Edge,
+  GraphLayout,
+  Tier,
+  ViewMode,
+} from './types';
 
 const ROW_HEIGHT = 28;
 const LANE_WIDTH = 20;
 const NODE_RADIUS = 5;
 const PADDING = 40;
+
+const BUCKET_WIDTH = 120;
+const BUCKET_GAP = 4;
+const BUCKET_MIN_HEIGHT = 16;
+const BUCKET_HEIGHT_PER_COMMIT = 0.8;
+const BUCKET_HEIGHT_COMMIT_CAP = 100;
+
+const BUCKET_PALETTE = ['#e5e5e5', '#bae6fd', '#60a5fa', '#2563eb', '#1e3a8a'];
 
 const LANE_PALETTE = [
   '#2563eb',
@@ -30,14 +46,81 @@ export function layoutGraph(
   viewMode: ViewMode,
   tier: Tier,
 ): GraphLayout {
-  if (viewMode === 'swimlane' && tier === 2) {
-    return tier2LayoutSwimLane(commits, refs);
+  if (viewMode === 'swimlane') {
+    if (tier === 0) return tier0LayoutSwimLane(commits);
+    if (tier === 2) return tier2LayoutSwimLane(commits, refs);
   }
   throw new Error(`layout not implemented: viewMode=${viewMode} tier=${tier}`);
 }
 
-export function tier0LayoutSwimLane(_commits: Commit[]): GraphLayout {
-  throw new Error('not implemented (phase 3)');
+function quintileColor(count: number, sortedCounts: number[]): string {
+  if (count === 0 || sortedCounts.length === 0) return BUCKET_PALETTE[0];
+  const q = (p: number) =>
+    sortedCounts[Math.min(sortedCounts.length - 1, Math.floor(p * sortedCounts.length))];
+  const thresholds = [q(0.2), q(0.4), q(0.6), q(0.8)];
+  for (let i = 0; i < thresholds.length; i++) {
+    if (count <= thresholds[i]) return BUCKET_PALETTE[i + 1];
+  }
+  return BUCKET_PALETTE[4];
+}
+
+export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
+  if (commits.length === 0) {
+    return {
+      tier: 0,
+      viewMode: 'swimlane',
+      nodes: [],
+      edges: [],
+      bounds: { width: PADDING * 2 + BUCKET_WIDTH, height: PADDING * 2 },
+    };
+  }
+
+  const counts = new Map<string, number>();
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+  for (const c of commits) {
+    const key = isoWeekKey(c.committedAt);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (c.committedAt < minTs) minTs = c.committedAt;
+    if (c.committedAt > maxTs) maxTs = c.committedAt;
+  }
+
+  const allKeys = weekKeysBetween(minTs, maxTs);
+  const sortedCounts = [...counts.values()].sort((a, b) => a - b);
+
+  const orderedNewestFirst = [...allKeys].sort(
+    (a, b) => isoWeekStart(b) - isoWeekStart(a),
+  );
+
+  const nodes: BucketNode[] = [];
+  let cursorY = PADDING;
+  for (const key of orderedNewestFirst) {
+    const count = counts.get(key) ?? 0;
+    const height =
+      BUCKET_MIN_HEIGHT +
+      Math.min(count, BUCKET_HEIGHT_COMMIT_CAP) * BUCKET_HEIGHT_PER_COMMIT;
+    nodes.push({
+      id: key,
+      x: PADDING,
+      y: cursorY,
+      width: BUCKET_WIDTH,
+      height,
+      count,
+      color: quintileColor(count, sortedCounts),
+    });
+    cursorY += height + BUCKET_GAP;
+  }
+
+  return {
+    tier: 0,
+    viewMode: 'swimlane',
+    nodes,
+    edges: [],
+    bounds: {
+      width: PADDING * 2 + BUCKET_WIDTH,
+      height: PADDING + cursorY,
+    },
+  };
 }
 
 export function tier1LayoutSwimLane(
