@@ -75,7 +75,29 @@ export const storage: PlatformStorage = {
     db.close();
   },
   async openDatabase(name) {
-    const db = await SQLite.openDatabaseAsync(name);
-    return wrap(db);
+    try {
+      const db = await SQLite.openDatabaseAsync(name);
+      return wrap(db);
+    } catch (err) {
+      // expo-sqlite on web uses OPFS with exclusive sync access handles.
+      // If a prior page load crashed or the browser didn't release the
+      // handle cleanly, the next open throws NoModificationAllowedError.
+      // The worker re-raises it as a plain Error whose message contains
+      // the DOMException name, so match on the text.
+      const stuck =
+        err instanceof Error && err.message.includes('NoModificationAllowedError');
+      if (!stuck) throw err;
+      console.warn(
+        '[detangle] OPFS access handle stuck; clearing and retrying DB open',
+      );
+      try {
+        const opfs = await navigator.storage.getDirectory();
+        await opfs.removeEntry(name, { recursive: true });
+      } catch {
+        // best effort — if removeEntry fails, retry will still throw
+      }
+      const db = await SQLite.openDatabaseAsync(name);
+      return wrap(db);
+    }
   },
 };
