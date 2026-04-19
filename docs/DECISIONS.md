@@ -6,6 +6,45 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
+## 2026-04-19 — sql.js on web, expo-sqlite on native
+
+**Decision:** `/platform/storage.web.ts` uses `sql.js` (pure-WASM SQLite in the main thread). `/platform/storage.native.ts` continues to use `expo-sqlite`. The WASM binary is vendored at `public/sql-wasm.wasm` and served by Expo's static hosting.
+
+**Rationale:**
+- expo-sqlite's web build uses a Worker + `AccessHandlePoolVFS` (OPFS sync access handles). Those handles can get stuck in a state that survives page reloads, is not clearable from JS, and kills the worker — reproducible in Firefox and unrecoverable once it happens.
+- sql.js runs in the main thread with no OPFS dependency, so the whole class of "dead worker / stuck handle" failures disappears.
+- The trade-off is main-thread execution (potential UI jank on large queries) and no persistence by default. For the semantic-zoom UX we can mitigate jank with `requestIdleCallback`-batched queries or migrate to a SharedWorker later; persistence can be added by serializing to IndexedDB.
+
+**Known limitations (to fix in Phase 6 polish):**
+- Commit cache is session-only on web — reload = re-sync. Token stays in IndexedDB so the user doesn't re-auth.
+- Main-thread SQL means very large queries can block paint. Monitor during Phase 2 perf work.
+
+**Alternatives considered:**
+- Stay on expo-sqlite + reload-based OPFS recovery — rejected; proven unreliable.
+- Roll our own IndexedDB-backed `Database` that translates our SQL subset — rejected; brittle and a lot of surface to test.
+- Use CDN-hosted sql.js — rejected; privacy-first tool shouldn't depend on external hosts.
+
+**Revisit when:** expo-sqlite's web path becomes reliable across browsers, or when main-thread SQL becomes a perf bottleneck.
+
+---
+
+## 2026-04-19 — Web Metro needs `wasm` in assetExts
+
+**Decision:** `metro.config.js` adds `'wasm'` to `config.resolver.assetExts` so expo-sqlite's web worker can import its WASM binary.
+
+**Rationale:**
+- expo-sqlite 16 (the SDK 54 version) has `import wasmModule from './wa-sqlite/wa-sqlite.wasm';` inside the web worker.
+- Metro's default `assetExts` in SDK 54 doesn't include `wasm`, so resolution fails during web bundling.
+- Adding `wasm` treats it as an asset (copy + return URL) which is what the worker expects.
+
+**Alternatives considered:**
+- Custom Metro transformer for `.wasm` — rejected; assetExts is the simple, supported path.
+- Wait for expo-sqlite to fix the issue upstream — rejected; trivial one-line workaround.
+
+**Revisit when:** Upgrading to a newer SDK where the default `assetExts` might already include `wasm`. If so, the workaround is a no-op but harmless.
+
+---
+
 ## 2026-04-19 — Scaffold on Expo SDK 54, not 55
 
 **Decision:** Phase 0 uses Expo SDK 54 (what `create-expo-app@latest` installs today), not SDK 55 as `ARCHITECTURE.md` originally targeted.
@@ -118,9 +157,35 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
-## 2026-04-19 — GitHub OAuth device flow, not web flow or PAT
+## 2026-04-19 — GitHub App device flow, not OAuth App
+
+**Decision:** Auth uses a **GitHub App** with the device flow and user-access tokens. Access tokens expire (default 8h) and are rotated via a refresh token (default 6mo); session layer auto-refreshes with ~60s skew before expiry. OAuth App path (which we used initially) is superseded.
+
+**Rationale:**
+- GitHub Apps support fine-grained, read-only permissions (e.g., `Contents: Read`, `Metadata: Read`). OAuth Apps only have `repo` / `public_repo` — the former grants write capability we never use, and we only want to read.
+- Device flow UX is identical for GitHub Apps — no extra moving parts in our app compared to OAuth.
+- Users pick exactly which repos to share at install time, which is a nicer privacy story than OAuth's "all or nothing".
+- Expiring tokens are where GitHub is heading; the non-expiring option is being deprecated. ~30 lines of refresh logic buys us long-term alignment.
+
+**What changed in code:**
+- `pollForToken` returns `{ accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn }` instead of a bare string.
+- New `refreshAccessToken(clientId, refreshToken, authBase)`.
+- Session stores a `TokenBundle` (JSON) in secure storage with absolute expiry timestamps.
+- `createClient(getToken)` takes a token getter so each API call gets a freshly-refreshed token.
+- `listRepos` hits `/user/installations` then `/user/installations/{id}/repositories` (GitHub Apps scope access per-installation).
+
+**Alternatives considered:**
+- OAuth App with `public_repo` — rejected; doesn't cover private repos and still carries write capability.
+- Fine-grained PAT — rejected for v1; users would have to visit GitHub, pick scopes, and paste — same "janky UX" concern as before.
+- GitHub App with non-expiring tokens — rejected; that option is being deprecated.
+
+---
+
+## 2026-04-19 — GitHub OAuth device flow, not web flow or PAT (superseded)
 
 **Decision:** Auth uses GitHub's OAuth device flow exclusively.
+
+**Status:** Superseded 2026-04-19 by the GitHub App decision above. Keeping here for context.
 
 **Rationale:**
 - No client secret required — safe to ship in a public client bundle.

@@ -7,30 +7,63 @@ export interface Repo {
   lastSyncedAt: number | null;
 }
 
+interface RepoRow {
+  id: number;
+  owner: string;
+  name: string;
+  last_synced_at: number | null;
+}
+
+function fromRow(row: RepoRow): Repo {
+  return {
+    id: row.id,
+    owner: row.owner,
+    name: row.name,
+    lastSyncedAt: row.last_synced_at,
+  };
+}
+
 export async function upsertRepo(
-  _db: Database,
-  _owner: string,
-  _name: string,
+  db: Database,
+  owner: string,
+  name: string,
 ): Promise<Repo> {
-  throw new Error('not implemented');
+  await db.run(
+    `INSERT INTO repos (owner, name) VALUES (?, ?)
+     ON CONFLICT(owner, name) DO NOTHING`,
+    [owner, name],
+  );
+  const row = await db.get<RepoRow>(
+    `SELECT id, owner, name, last_synced_at FROM repos WHERE owner = ? AND name = ?`,
+    [owner, name],
+  );
+  if (!row) throw new Error(`Failed to upsert repo ${owner}/${name}`);
+  return fromRow(row);
 }
 
 export async function getRepo(
-  _db: Database,
-  _owner: string,
-  _name: string,
+  db: Database,
+  owner: string,
+  name: string,
 ): Promise<Repo | null> {
-  throw new Error('not implemented');
+  const row = await db.get<RepoRow>(
+    `SELECT id, owner, name, last_synced_at FROM repos WHERE owner = ? AND name = ?`,
+    [owner, name],
+  );
+  return row ? fromRow(row) : null;
 }
 
-export async function listRepos(_db: Database): Promise<Repo[]> {
-  throw new Error('not implemented');
+export async function listRepos(db: Database): Promise<Repo[]> {
+  const rows = await db.all<RepoRow>(
+    `SELECT id, owner, name, last_synced_at FROM repos ORDER BY owner, name`,
+  );
+  return rows.map(fromRow);
 }
 
 export async function setLastSynced(
-  _db: Database,
-  _repoId: number,
-  _at: number,
+  db: Database,
+  repoId: number,
+  at: number,
 ): Promise<void> {
-  throw new Error('not implemented');
+  await db.run(`UPDATE repos SET last_synced_at = ? WHERE id = ?`, [at, repoId]);
 }
