@@ -214,7 +214,26 @@ export interface GraphLayout {
 }
 
 // /core/graph/tierSelection.ts
-export function selectTier(zoomLevel: number, viewportWidth: number, totalCommits: number): Tier;
+export interface TierSelectionContext {
+  totalCommits: number;
+  spanSeconds?: number;   // maxCommittedAt - minCommittedAt; clamps behavior on narrow-history repos
+}
+
+export function selectTier(
+  zoomLevel: number,
+  viewportWidth: number,
+  totalCommits: number,
+  currentTier?: Tier,       // enables hysteresis when provided
+  context?: TierSelectionContext,
+): Tier;
+
+export const TIER_THRESHOLDS: {
+  tier1to2: number;
+  tier0to1: number;
+  hysteresis: number;
+  phoneBias: number;
+  phoneViewportCutoff: number;
+};
 
 // /core/graph/layout.ts — top-level dispatcher
 export function layoutGraph(
