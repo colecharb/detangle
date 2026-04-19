@@ -31,11 +31,15 @@ function tx<T>(
   });
 }
 
+// Bumping this suffix busts any stale 404/HTML the browser cached from
+// an earlier load when the dev server wasn't yet serving public/.
+const WASM_VERSION = '1';
+
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 function loadSqlJs(): Promise<SqlJsStatic> {
   if (!sqlJsPromise) {
     sqlJsPromise = initSqlJs({
-      locateFile: (file: string) => `/${file}`,
+      locateFile: (file: string) => `/${file}?v=${WASM_VERSION}`,
     });
   }
   return sqlJsPromise;
