@@ -18,16 +18,52 @@ Living status file. Update when finishing a phase, or when anything meaningful c
 ## Changelog
 
 ### 2026-04-19 — Phase 1 complete
-- GitHub OAuth device flow end-to-end: `core/github/auth.ts` starts flow and polls; typed errors for denied/expired/rate-limit.
-- REST client (`core/github/client.ts`) with authed fetch, pagination via `Link: rel="next"`, and typed 401/403/429 errors.
-- Sync (`core/github/sync.ts`) walks only refs whose tip SHA changed; stops paginating a branch on first known SHA; also extracts `pr_number` from merge/squash commit messages.
-- SQLite accessors (`core/storage/repos.ts`, `commits.ts`, `refs.ts`) fully implemented with idempotent upserts; `listCommits` supports the full `CommitFilter`.
-- Session provider opens DB + migrates + loads token once on mount; secure-store on native, IndexedDB on web — token survives restart.
-- Routes: landing (`/`), repo picker (`/repos` with search filter and sign-out), sync page (`/[owner]/[repo]` with progress + resync).
-- DeviceFlowModal copies code to clipboard, opens verification URL via expo-linking, polls in background, handles abort on close.
-- Metro: added `wasm` to `assetExts` so expo-sqlite's web worker can import its `.wasm` module. Without this, the web bundle fails.
-- `tsc --noEmit` clean. Core purity grep clean. Web bundle + static export succeed; dev server returns 200 on `/`.
-- Not manually exercised end-to-end (requires a live browser + real GitHub auth). Structurally correct based on typecheck + successful bundle.
+
+**Auth — GitHub App device flow with refresh tokens** (superseded the initial OAuth App path; see `DECISIONS.md`).
+- `core/github/auth.ts` — `startDeviceFlow`, `pollForToken` (returns bundle with access + refresh + expiries), `refreshAccessToken`. Typed errors for denied / expired / refresh-expired.
+- Session stores a `TokenBundle` in platform secret storage and auto-refreshes ~60s before access-token expiry; de-dupes concurrent refreshes via a ref.
+- `DeviceFlowModal` copies the user code to clipboard, opens the verification URL in a new tab on web (so the polling tab stays alive) / external browser on native.
+- Scope is not requested — GitHub Apps configure permissions at registration (we run on read-only `Contents` + `Metadata` + `Pull requests`).
+
+**REST client** (`core/github/client.ts`).
+- Authed fetch with `Link: rel="next"` pagination (and a `requestPagedNested` helper for endpoints that wrap their arrays).
+- Typed `GitHubAuthError` (401) and `GitHubRateLimitError` (403/429 with remaining=0, carries reset timestamp).
+- `createClient(getToken)` takes a token getter so each request gets a fresh access token through the session's refresh loop.
+- `listRepos` aggregates over `/user/installations` → `/user/installations/{id}/repositories`; returns `{ repos, installationCount }` so the UI can tell apart "not installed" from "installed with no shared repos".
+
+**Sync** (`core/github/sync.ts`).
+- `syncRepo` diffs remote ref tips against stored tips, only walks changed refs, and stops paginating a branch at the first SHA already in the DB.
+- Extracts `pr_number` from merge/squash commit messages as a heuristic; `enrichWithPullRequests` can back-fill authoritative numbers from `/pulls`.
+
+**Storage** — `core/storage/{repos,commits,refs}.ts` fully implemented with idempotent upserts. `listCommits` supports the full `CommitFilter`.
+
+**Routes.**
+- `/` landing: redirect to `/repos` when authed, otherwise show Connect GitHub button.
+- `/repos` repo picker: live text-filter, `Private` pill inline next to the repo name, sign-out, install CTA when `installationCount === 0` or the install has no shared repos (links to `github.com/apps/<slug>/installations/new` via `EXPO_PUBLIC_GITHUB_APP_SLUG`).
+- `/[owner]/[repo]`: auto-runs sync on mount with a progress callback, shows commits-added/refs-updated/duration, Resync button, typed rate-limit message.
+- Global: root `_layout` caps every route at `max-w-2xl` centered so the desktop layout doesn't sprawl; mobile unchanged.
+
+**Platform surface additions.**
+- `@platform/env` (new) — per-platform URLs. Web returns `'/__gh'` so the device-flow endpoints hit the Metro dev proxy; native returns `'https://github.com'` directly.
+- `@platform/storage` on web now uses **sql.js** (asm.js build) instead of expo-sqlite (the OPFS worker was unrecoverable in Firefox; `DECISIONS.md` has the full story). Native still uses expo-sqlite.
+
+**Dev infrastructure.**
+- `metro.config.js` proxies `/__gh/*` to `github.com/*` with permissive CORS + OPTIONS short-circuit — GitHub's OAuth endpoints don't set CORS, so browsers block direct fetches. Verified with a real device-code response end-to-end.
+- Metro's `assetExts` includes `wasm`.
+
+**Verification.**
+- `tsc --noEmit` clean; `/core` purity grep clean.
+- End-to-end manual run on web: Connect GitHub → code → authorize & install the GitHub App → land on `/repos` → tap a repo → sync runs → "Synced N commits" renders.
+
+**Deviations from plan.**
+- Migrated OAuth App → GitHub App mid-phase for fine-grained read-only permissions. OAuth App decision superseded in `DECISIONS.md`.
+- Replaced expo-sqlite on web with sql.js due to OPFS instability.
+- Added a Metro CORS proxy for OAuth endpoints. Dev-only; production web deployment will need either a real proxy, native-only auth, or a different strategy — flagged in `Deferred`.
+
+**Carried forward to later phases.**
+- Web persistence for the commit cache — sql.js runs in-memory on web today, so every reload re-syncs. Serialize-to-IndexedDB on mutation is the fix (Phase 6 polish candidate).
+- Production web auth needs a CORS solution that doesn't rely on the Metro dev proxy (Phase 7 ship).
+- Native boot not manually exercised yet (no simulators in the dev env at the time of Phase 1 sign-off).
 
 ### 2026-04-19 — Phase 0 complete
 - Scaffolded Expo universal app from `tabs` template, renamed to `detangle`.
@@ -57,4 +93,6 @@ Deferred items from a phase should be tracked in a "Deferred" section below, wit
 
 ## Deferred
 
-_(nothing yet)_
+- **Web commit-cache persistence** — sql.js runs in-memory; every reload re-syncs. Add IndexedDB serialization on mutation. _Target: Phase 6 polish._
+- **Production web auth** — GitHub's OAuth endpoints have no CORS, and our Metro `/__gh` proxy is dev-only. Options: deploy a tiny proxy (minimal backend), ship native-only auth, or accept PAT as a web fallback. _Target: Phase 7 ship._
+- **Native smoke test** — iOS/Android simulators not exercised yet; shared code is the same so risk is low, but worth a real run before Phase 2 wraps. _Target: early Phase 2._
