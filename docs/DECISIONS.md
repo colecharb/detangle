@@ -157,9 +157,35 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
-## 2026-04-19 — GitHub OAuth device flow, not web flow or PAT
+## 2026-04-19 — GitHub App device flow, not OAuth App
+
+**Decision:** Auth uses a **GitHub App** with the device flow and user-access tokens. Access tokens expire (default 8h) and are rotated via a refresh token (default 6mo); session layer auto-refreshes with ~60s skew before expiry. OAuth App path (which we used initially) is superseded.
+
+**Rationale:**
+- GitHub Apps support fine-grained, read-only permissions (e.g., `Contents: Read`, `Metadata: Read`). OAuth Apps only have `repo` / `public_repo` — the former grants write capability we never use, and we only want to read.
+- Device flow UX is identical for GitHub Apps — no extra moving parts in our app compared to OAuth.
+- Users pick exactly which repos to share at install time, which is a nicer privacy story than OAuth's "all or nothing".
+- Expiring tokens are where GitHub is heading; the non-expiring option is being deprecated. ~30 lines of refresh logic buys us long-term alignment.
+
+**What changed in code:**
+- `pollForToken` returns `{ accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn }` instead of a bare string.
+- New `refreshAccessToken(clientId, refreshToken, authBase)`.
+- Session stores a `TokenBundle` (JSON) in secure storage with absolute expiry timestamps.
+- `createClient(getToken)` takes a token getter so each API call gets a freshly-refreshed token.
+- `listRepos` hits `/user/installations` then `/user/installations/{id}/repositories` (GitHub Apps scope access per-installation).
+
+**Alternatives considered:**
+- OAuth App with `public_repo` — rejected; doesn't cover private repos and still carries write capability.
+- Fine-grained PAT — rejected for v1; users would have to visit GitHub, pick scopes, and paste — same "janky UX" concern as before.
+- GitHub App with non-expiring tokens — rejected; that option is being deprecated.
+
+---
+
+## 2026-04-19 — GitHub OAuth device flow, not web flow or PAT (superseded)
 
 **Decision:** Auth uses GitHub's OAuth device flow exclusively.
+
+**Status:** Superseded 2026-04-19 by the GitHub App decision above. Keeping here for context.
 
 **Rationale:**
 - No client secret required — safe to ship in a public client bundle.
