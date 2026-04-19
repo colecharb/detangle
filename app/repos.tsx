@@ -1,5 +1,5 @@
-import { Link, Redirect } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { Link, Redirect } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,25 +8,32 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import * as Linking from 'expo-linking';
+} from "react-native";
+import * as Linking from "expo-linking";
 import {
   createClient,
   GitHubAuthError,
   type ReposWithInstallations,
-} from '@core/github';
-import { useSession } from '@components/session';
+  type Viewer,
+} from "@core/github";
+import { useSession } from "@components/session";
 
-const APP_SLUG = process.env.EXPO_PUBLIC_GITHUB_APP_SLUG ?? '';
+const APP_SLUG = process.env.EXPO_PUBLIC_GITHUB_APP_SLUG ?? "";
 const INSTALL_URL = APP_SLUG
   ? `https://github.com/apps/${APP_SLUG}/installations/new`
   : null;
 
 export default function ReposScreen() {
-  const { hasToken, loading: sessionLoading, getAccessToken, clearTokens } = useSession();
+  const {
+    hasToken,
+    loading: sessionLoading,
+    getAccessToken,
+    clearTokens,
+  } = useSession();
   const [data, setData] = useState<ReposWithInstallations | null>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!hasToken) return;
@@ -38,15 +45,21 @@ export default function ReposScreen() {
           if (!t) throw new GitHubAuthError();
           return t;
         });
-        const result = await client.listRepos();
-        if (!cancelled) setData(result);
+        const [v, result] = await Promise.all([
+          client.getViewer(),
+          client.listRepos(),
+        ]);
+        if (!cancelled) {
+          setViewer(v);
+          setData(result);
+        }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof GitHubAuthError) {
           await clearTokens();
           return;
         }
-        setError(err instanceof Error ? err.message : 'Failed to load repos');
+        setError(err instanceof Error ? err.message : "Failed to load repos");
       }
     })();
     return () => {
@@ -65,8 +78,8 @@ export default function ReposScreen() {
 
   const openInstall = async () => {
     if (!INSTALL_URL) return;
-    if (Platform.OS === 'web') {
-      window.open(INSTALL_URL, '_blank', 'noopener,noreferrer');
+    if (Platform.OS === "web") {
+      window.open(INSTALL_URL, "_blank", "noopener,noreferrer");
     } else {
       await Linking.openURL(INSTALL_URL);
     }
@@ -90,7 +103,10 @@ export default function ReposScreen() {
   return (
     <View className="flex-1 bg-white pt-16">
       <View className="px-6 pb-4">
-        <Text className="text-2xl font-bold text-neutral-900">Your repositories</Text>
+        <Text className="text-2xl font-bold text-neutral-900">Detangle</Text>
+        <Text className="text-2xl  text-neutral-900">
+          {`your repositories, ${viewer?.login ?? "…"}:`}
+        </Text>
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -116,7 +132,7 @@ export default function ReposScreen() {
           <Text className="text-base text-neutral-800">
             {data!.installationCount === 0
               ? "You haven't installed the Detangle GitHub App yet."
-              : 'The Detangle GitHub App is installed, but no repositories are shared with it.'}
+              : "The Detangle GitHub App is installed, but no repositories are shared with it."}
           </Text>
           <Text className="mt-2 text-sm text-neutral-500">
             Install (or update the install) and pick which repos to share.
@@ -132,7 +148,8 @@ export default function ReposScreen() {
             </Pressable>
           ) : (
             <Text className="mt-2 text-xs text-red-600">
-              EXPO_PUBLIC_GITHUB_APP_SLUG is not set — can&apos;t link you to the install page.
+              EXPO_PUBLIC_GITHUB_APP_SLUG is not set — can&apos;t link you to
+              the install page.
             </Text>
           )}
         </View>
@@ -143,7 +160,9 @@ export default function ReposScreen() {
           data={filtered}
           extraData={query}
           keyExtractor={(r) => `${r.owner}/${r.name}`}
-          ItemSeparatorComponent={() => <View className="h-px bg-neutral-200" />}
+          ItemSeparatorComponent={() => (
+            <View className="h-px bg-neutral-200" />
+          )}
           renderItem={({ item }) => (
             <Link href={`/${item.owner}/${item.name}`} asChild>
               <Pressable className="flex-row items-center gap-2 px-6 py-4 active:bg-neutral-100">
