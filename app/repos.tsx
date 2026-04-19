@@ -17,7 +17,14 @@ import {
 } from '@core/github';
 import { useSession } from '@components/session';
 
-const APP_SLUG = process.env.EXPO_PUBLIC_GITHUB_APP_SLUG ?? '';
+// Accept either a bare slug ('colecharb-detangle') or a pasted URL
+// ('https://github.com/apps/colecharb-detangle') — strip anything up to
+// and including the '/apps/' segment, plus trailing slashes.
+const APP_SLUG = (process.env.EXPO_PUBLIC_GITHUB_APP_SLUG ?? '')
+  .replace(/^https?:\/\//, '')
+  .replace(/^.*\/apps\//, '')
+  .replace(/\/+$/, '')
+  .trim();
 const INSTALL_URL = APP_SLUG
   ? `https://github.com/apps/${APP_SLUG}/installations/new`
   : null;
