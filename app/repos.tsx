@@ -73,6 +73,9 @@ export default function ReposScreen() {
           onChangeText={setQuery}
           placeholder="Filter…"
           placeholderTextColor="#a3a3a3"
+          autoCorrect={false}
+          autoCapitalize="none"
+          autoComplete="off"
           className="mt-4 rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900"
         />
       </View>
@@ -90,6 +93,7 @@ export default function ReposScreen() {
       {filtered && (
         <FlatList
           data={filtered}
+          extraData={query}
           keyExtractor={(r) => `${r.owner}/${r.name}`}
           ItemSeparatorComponent={() => <View className="h-px bg-neutral-200" />}
           renderItem={({ item }) => (
