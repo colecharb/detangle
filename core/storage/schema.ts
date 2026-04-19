@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS refs (
   sha TEXT NOT NULL,
   PRIMARY KEY (repo_id, name)
 );
+
+CREATE TABLE IF NOT EXISTS pulls (
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  merge_commit_sha TEXT,
+  PRIMARY KEY (repo_id, number)
+);
 `;
 
 export async function migrate(db: Database): Promise<void> {

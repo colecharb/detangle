@@ -89,6 +89,22 @@ export interface Ref {
 
 export async function upsertRefs(db: Database, refs: Ref[]): Promise<void>;
 export async function listRefs(db: Database, repoId: number): Promise<Ref[]>;
+
+// /core/storage/pulls.ts
+export interface Pull {
+  repoId: number;
+  number: number;
+  title: string;
+  mergeCommitSha: string | null;
+}
+
+export async function upsertPulls(
+  db: Database,
+  repoId: number,
+  pulls: { number: number; title: string; mergeCommitSha: string | null }[],
+): Promise<void>;
+
+export async function listPulls(db: Database, repoId: number): Promise<Pull[]>;
 ```
 
 ---
