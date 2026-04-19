@@ -24,6 +24,8 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
 
   useEffect(() => {
     if (!visible) return;
@@ -45,7 +47,7 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
           env.githubAuthBase,
         );
         const issuedAt = Math.floor(Date.now() / 1000);
-        onSuccess({
+        onSuccessRef.current({
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
           accessTokenExpiresAt: issuedAt + token.accessTokenExpiresIn,
@@ -58,6 +60,7 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
         } else if (err instanceof DeviceFlowExpiredError) {
           setError('The code expired. Please try again.');
         } else if (err instanceof Error) {
+          console.error('Device flow error:', err);
           setError(err.message);
         } else {
           setError('An unknown error occurred.');
@@ -68,7 +71,7 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
     return () => {
       controller.abort();
     };
-  }, [visible, clientId, onSuccess]);
+  }, [visible, clientId]);
 
   const copyCode = async () => {
     if (!start) return;
