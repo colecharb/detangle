@@ -31,7 +31,13 @@ export interface ReposWithInstallations {
   installationCount: number;
 }
 
+export interface Viewer {
+  login: string;
+  name: string | null;
+}
+
 export interface GitHubClient {
+  getViewer(): Promise<Viewer>;
   listRepos(): Promise<ReposWithInstallations>;
   listRefs(owner: string, name: string): Promise<RefSummary[]>;
   listCommits(
@@ -121,6 +127,12 @@ export function createClient(getToken: () => Promise<string>): GitHubClient {
   }
 
   return {
+    async getViewer() {
+      const { body } = await request('/user');
+      const raw = body as { login: string; name: string | null };
+      return { login: raw.login, name: raw.name };
+    },
+
     async listRepos() {
       type RawInstallation = { id: number };
       type RawRepo = {
