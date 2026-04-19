@@ -81,20 +81,25 @@ export const storage: PlatformStorage = {
     } catch (err) {
       // expo-sqlite on web uses OPFS with exclusive sync access handles.
       // If a prior page load crashed or the browser didn't release the
-      // handle cleanly, the next open throws NoModificationAllowedError.
-      // The worker re-raises it as a plain Error whose message contains
-      // the DOMException name, so match on the text.
-      const stuck =
-        err instanceof Error && err.message.includes('NoModificationAllowedError');
-      if (!stuck) throw err;
-      console.warn(
-        '[detangle] OPFS access handle stuck; clearing and retrying DB open',
-      );
+      // handle cleanly, the next open fails. The worker re-wraps the
+      // error so its message is often lossy ("Unknown" /
+      // "NoModificationAllowedError" / etc). Since any failure here
+      // means the DB is unusable, do a full OPFS wipe and retry once.
+      console.warn('[detangle] DB open failed, wiping OPFS and retrying:', err);
       try {
         const opfs = await navigator.storage.getDirectory();
-        await opfs.removeEntry(name, { recursive: true });
+        // @ts-expect-error values() is supported on FileSystemDirectoryHandle but not in lib.dom yet
+        for await (const entry of opfs.values()) {
+          try {
+            await opfs.removeEntry((entry as FileSystemHandle).name, {
+              recursive: true,
+            });
+          } catch {
+            // best effort
+          }
+        }
       } catch {
-        // best effort — if removeEntry fails, retry will still throw
+        // best effort
       }
       const db = await SQLite.openDatabaseAsync(name);
       return wrap(db);
