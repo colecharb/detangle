@@ -15,6 +15,12 @@ export interface TokenResponse {
 
 const DEFAULT_BASE = 'https://github.com';
 
+function formBody(fields: Record<string, string>): string {
+  return Object.entries(fields)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+}
+
 export class DeviceFlowDeniedError extends Error {
   constructor() {
     super('Device flow denied by user');
@@ -44,9 +50,9 @@ export async function startDeviceFlow(
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({ client_id: clientId }),
+    body: formBody({ client_id: clientId }),
   });
   if (!res.ok) {
     throw new Error(`Device flow start failed: ${res.status} ${res.statusText}`);
@@ -86,9 +92,9 @@ export async function pollForToken(
       method: 'POST',
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
+      body: formBody({
         client_id: clientId,
         device_code: start.deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
@@ -126,9 +132,9 @@ export async function refreshAccessToken(
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
+    body: formBody({
       client_id: clientId,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
