@@ -15,6 +15,22 @@ interface SessionState {
 
 const SessionContext = createContext<SessionState | null>(null);
 
+// Cached at module scope so strict-mode double-invocation of the effect
+// (and later hot reloads) reuse the same OPFS access handle on web —
+// expo-sqlite will otherwise throw NoModificationAllowedError on the
+// second concurrent open.
+let dbPromise: Promise<Database> | null = null;
+function getDatabase(): Promise<Database> {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const db = await storage.openDatabase(DB_NAME);
+      await migrate(db);
+      return db;
+    })();
+  }
+  return dbPromise;
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<Database | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
@@ -23,8 +39,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const opened = await storage.openDatabase(DB_NAME);
-      await migrate(opened);
+      const opened = await getDatabase();
       const stored = await storage.getSecret(TOKEN_KEY);
       if (cancelled) return;
       setDb(opened);
