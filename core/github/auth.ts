@@ -88,19 +88,35 @@ export async function pollForToken(
     }
     await sleep(interval * 1000, signal);
 
-    const res = await fetch(`${authBase}/login/oauth/access_token`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formBody({
-        client_id: clientId,
-        device_code: start.deviceCode,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      }),
-      signal,
-    });
+    const pollUrl = `${authBase}/login/oauth/access_token`;
+    let res: Response;
+    try {
+      res = await fetch(pollUrl, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody({
+          client_id: clientId,
+          device_code: start.deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+        signal,
+      });
+    } catch (err) {
+      if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        throw err;
+      }
+      // Network errors while polling are expected on mobile — the device can
+      // sleep or the app can background while the user is entering the code
+      // in the browser. Log and keep looping.
+      console.log(
+        '[auth] pollForToken transient fetch error, retrying:',
+        err instanceof Error ? err.message : String(err),
+      );
+      continue;
+    }
     if (!res.ok) {
       throw new Error(`Device flow poll failed: ${res.status} ${res.statusText}`);
     }
