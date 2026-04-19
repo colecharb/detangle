@@ -253,16 +253,25 @@ export const TIER_THRESHOLDS: {
 };
 
 // /core/graph/layout.ts — top-level dispatcher
+export interface LayoutContext {
+  prTitles?: Map<number, string>;
+}
+
 export function layoutGraph(
   commits: Commit[],
   refs: Ref[],
   viewMode: ViewMode,
   tier: Tier,
+  context?: LayoutContext,
 ): GraphLayout;
 
 // Individual layout functions (used by the dispatcher, exported for testability)
 export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout;
-export function tier1LayoutSwimLane(commits: Commit[], refs: Ref[]): GraphLayout;
+export function tier1LayoutSwimLane(
+  commits: Commit[],
+  refs: Ref[],
+  prTitles?: Map<number, string>,
+): GraphLayout;
 export function tier2LayoutSwimLane(commits: Commit[], refs: Ref[]): GraphLayout;
 
 export function tier0LayoutAuthorLanes(commits: Commit[]): GraphLayout;

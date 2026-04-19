@@ -5,12 +5,17 @@ import { assignLanes } from './laneAssignment';
 import { isoWeekKey, isoWeekStart, weekKeysBetween } from './time';
 import type {
   BucketNode,
+  ClusterNode,
   CommitNode,
   Edge,
   GraphLayout,
   Tier,
   ViewMode,
 } from './types';
+
+export interface LayoutContext {
+  prTitles?: Map<number, string>;
+}
 
 const ROW_HEIGHT = 28;
 const LANE_WIDTH = 20;
@@ -45,9 +50,11 @@ export function layoutGraph(
   refs: Ref[],
   viewMode: ViewMode,
   tier: Tier,
+  context?: LayoutContext,
 ): GraphLayout {
   if (viewMode === 'swimlane') {
     if (tier === 0) return tier0LayoutSwimLane(commits);
+    if (tier === 1) return tier1LayoutSwimLane(commits, refs, context?.prTitles);
     if (tier === 2) return tier2LayoutSwimLane(commits, refs);
   }
   throw new Error(`layout not implemented: viewMode=${viewMode} tier=${tier}`);
@@ -123,11 +130,124 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
   };
 }
 
+interface ClusterAccumulator {
+  key: string;
+  prNumber: number | null;
+  authorName: string | null;
+  lane: number;
+  firstRow: number;
+  lastRow: number;
+  count: number;
+  firstMessage: string;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
 export function tier1LayoutSwimLane(
-  _commits: Commit[],
+  commits: Commit[],
   _refs: Ref[],
+  prTitles?: Map<number, string>,
 ): GraphLayout {
-  throw new Error('not implemented (phase 3)');
+  const sorted = topoSort(commits);
+  const { lanes, laneCount } = assignLanes(sorted);
+
+  const prClusters = new Map<number, ClusterAccumulator>();
+  const runClusters: ClusterAccumulator[] = [];
+  let currentRun: ClusterAccumulator | null = null;
+
+  for (let row = 0; row < sorted.length; row++) {
+    const c = sorted[row];
+    const lane = lanes.get(c.sha) ?? 0;
+
+    if (c.prNumber !== null) {
+      const existing = prClusters.get(c.prNumber);
+      if (existing) {
+        existing.firstRow = Math.min(existing.firstRow, row);
+        existing.lastRow = Math.max(existing.lastRow, row);
+        existing.count += 1;
+      } else {
+        prClusters.set(c.prNumber, {
+          key: `pr-${c.prNumber}`,
+          prNumber: c.prNumber,
+          authorName: c.authorName,
+          lane,
+          firstRow: row,
+          lastRow: row,
+          count: 1,
+          firstMessage: c.message.split('\n')[0],
+        });
+      }
+      currentRun = null;
+      continue;
+    }
+
+    if (
+      currentRun &&
+      currentRun.authorName === c.authorName &&
+      currentRun.lane === lane &&
+      currentRun.lastRow === row - 1
+    ) {
+      currentRun.lastRow = row;
+      currentRun.count += 1;
+    } else {
+      currentRun = {
+        key: `run-${row}`,
+        prNumber: null,
+        authorName: c.authorName,
+        lane,
+        firstRow: row,
+        lastRow: row,
+        count: 1,
+        firstMessage: c.message.split('\n')[0],
+      };
+      runClusters.push(currentRun);
+    }
+  }
+
+  const allClusters = [...prClusters.values(), ...runClusters];
+
+  const nodes: ClusterNode[] = allClusters.map((cluster) => {
+    const x = PADDING + cluster.lane * LANE_WIDTH - LANE_WIDTH / 2;
+    const y = PADDING + cluster.firstRow * ROW_HEIGHT;
+    const height = (cluster.lastRow - cluster.firstRow + 1) * ROW_HEIGHT;
+
+    let label: string;
+    if (cluster.prNumber !== null) {
+      const title = prTitles?.get(cluster.prNumber);
+      const suffix = `· ${cluster.count} commit${cluster.count === 1 ? '' : 's'}`;
+      label = title
+        ? `#${cluster.prNumber} ${truncate(title, 40)} ${suffix}`
+        : `#${cluster.prNumber} ${suffix}`;
+    } else if (cluster.count === 1) {
+      label = truncate(cluster.firstMessage, 40);
+    } else {
+      label = `${cluster.authorName ?? 'unknown'} · ${cluster.count}`;
+    }
+
+    return {
+      id: cluster.key,
+      x,
+      y,
+      width: LANE_WIDTH,
+      height,
+      label,
+      count: cluster.count,
+      color: laneColor(cluster.lane),
+    };
+  });
+
+  return {
+    tier: 1,
+    viewMode: 'swimlane',
+    nodes,
+    edges: [],
+    bounds: {
+      width: PADDING * 2 + Math.max(1, laneCount) * LANE_WIDTH,
+      height: PADDING * 2 + sorted.length * ROW_HEIGHT,
+    },
+  };
 }
 
 export function tier2LayoutSwimLane(
