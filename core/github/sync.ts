@@ -1,6 +1,7 @@
 import type { Database } from '@platform/storage';
 import { hasCommit, upsertCommits, type Commit } from '../storage/commits';
 import { listRefs as listStoredRefs, upsertRefs, type Ref } from '../storage/refs';
+import { upsertPulls } from '../storage/pulls';
 import { setLastSynced, upsertRepo } from '../storage/repos';
 import type { CommitSummary, GitHubClient } from './client';
 
@@ -105,6 +106,17 @@ export async function enrichWithPullRequests(
 ): Promise<{ commitsUpdated: number }> {
   const repo = await upsertRepo(db, owner, name);
   const pulls = await client.listPulls(owner, name);
+
+  await upsertPulls(
+    db,
+    repo.id,
+    pulls.map((p) => ({
+      number: p.number,
+      title: p.title,
+      mergeCommitSha: p.mergeCommitSha,
+    })),
+  );
+
   let updated = 0;
   for (const p of pulls) {
     if (!p.mergeCommitSha) continue;
