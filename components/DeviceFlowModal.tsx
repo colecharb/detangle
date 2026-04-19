@@ -10,12 +10,13 @@ import {
   type DeviceFlowStart,
 } from '@core/github';
 import { env } from '@platform/env';
+import type { TokenBundle } from './session';
 
 interface Props {
   visible: boolean;
   clientId: string;
   onClose: () => void;
-  onSuccess: (token: string) => void;
+  onSuccess: (bundle: TokenBundle) => void;
 }
 
 export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props) {
@@ -43,7 +44,13 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
           controller.signal,
           env.githubAuthBase,
         );
-        onSuccess(token);
+        const issuedAt = Math.floor(Date.now() / 1000);
+        onSuccess({
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+          accessTokenExpiresAt: issuedAt + token.accessTokenExpiresIn,
+          refreshTokenExpiresAt: issuedAt + token.refreshTokenExpiresIn,
+        });
       } catch (err) {
         if (controller.signal.aborted) return;
         if (err instanceof DeviceFlowDeniedError) {
@@ -105,7 +112,7 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
               </Pressable>
 
               <Text className="mt-4 text-neutral-700">
-                2. Open GitHub and paste the code.
+                2. Open GitHub, paste the code, and choose which repositories to share.
               </Text>
               <Pressable
                 onPress={openVerification}
