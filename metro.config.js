@@ -9,17 +9,4 @@ if (!config.resolver.assetExts.includes('wasm')) {
   config.resolver.assetExts.push('wasm');
 }
 
-// Cross-origin isolation headers: required for expo-sqlite's OPFS
-// access handles and SharedArrayBuffer to work reliably on web.
-config.server = {
-  ...config.server,
-  enhanceMiddleware(middleware) {
-    return (req, res, next) => {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-      return middleware(req, res, next);
-    };
-  },
-};
-
 module.exports = withNativeWind(config, { input: './global.css' });
