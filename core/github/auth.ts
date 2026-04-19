@@ -15,6 +15,12 @@ export interface TokenResponse {
 
 const DEFAULT_BASE = 'https://github.com';
 
+function formBody(fields: Record<string, string>): string {
+  return Object.entries(fields)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+}
+
 export class DeviceFlowDeniedError extends Error {
   constructor() {
     super('Device flow denied by user');
@@ -44,9 +50,9 @@ export async function startDeviceFlow(
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({ client_id: clientId }),
+    body: formBody({ client_id: clientId }),
   });
   if (!res.ok) {
     throw new Error(`Device flow start failed: ${res.status} ${res.statusText}`);
@@ -75,22 +81,42 @@ export async function pollForToken(
 ): Promise<TokenResponse> {
   let interval = start.intervalSeconds;
   while (Math.floor(Date.now() / 1000) < start.expiresAt) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (signal?.aborted) {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
     await sleep(interval * 1000, signal);
 
-    const res = await fetch(`${authBase}/login/oauth/access_token`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        client_id: clientId,
-        device_code: start.deviceCode,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      }),
-      signal,
-    });
+    const pollUrl = `${authBase}/login/oauth/access_token`;
+    let res: Response;
+    try {
+      res = await fetch(pollUrl, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody({
+          client_id: clientId,
+          device_code: start.deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+        signal,
+      });
+    } catch (err) {
+      if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        throw err;
+      }
+      // Network errors while polling are expected on mobile — the device can
+      // sleep or the app can background while the user is entering the code
+      // in the browser. Log and keep looping.
+      console.log(
+        '[auth] pollForToken transient fetch error, retrying:',
+        err instanceof Error ? err.message : String(err),
+      );
+      continue;
+    }
     if (!res.ok) {
       throw new Error(`Device flow poll failed: ${res.status} ${res.statusText}`);
     }
@@ -122,9 +148,9 @@ export async function refreshAccessToken(
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
+    body: formBody({
       client_id: clientId,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
@@ -178,7 +204,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener('abort', () => {
       clearTimeout(timer);
-      reject(new DOMException('Aborted', 'AbortError'));
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      reject(err);
     });
   });
 }

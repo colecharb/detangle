@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Copied from node_modules/canvaskit-wasm by postinstall; keeps WASM
+# in lockstep with the installed JS side of CanvasKit.
+/public/canvaskit.wasm
