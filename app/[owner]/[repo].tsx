@@ -1,4 +1,4 @@
-import { Link, Redirect, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import {
@@ -118,9 +118,9 @@ export default function RepoScreen() {
   return (
     <View className="flex-1 bg-white">
       <View className="border-b border-neutral-200 px-6 pt-16 pb-4">
-        <Link href="/repos" className="text-neutral-500">
-          ← Back
-        </Link>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/repos'))}>
+          <Text className="text-neutral-500">← Back</Text>
+        </Pressable>
         <View className="mt-2 flex-row items-center justify-between">
           <Text className="text-xl font-bold text-neutral-900" numberOfLines={1}>
             {owner}/{repo}
