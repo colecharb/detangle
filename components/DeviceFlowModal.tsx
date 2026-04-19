@@ -9,6 +9,7 @@ import {
   startDeviceFlow,
   type DeviceFlowStart,
 } from '@core/github';
+import { env } from '@platform/env';
 
 interface Props {
   visible: boolean;
@@ -34,9 +35,14 @@ export function DeviceFlowModal({ visible, clientId, onClose, onSuccess }: Props
 
     (async () => {
       try {
-        const flow = await startDeviceFlow(clientId);
+        const flow = await startDeviceFlow(clientId, env.githubAuthBase);
         setStart(flow);
-        const token = await pollForToken(clientId, flow, controller.signal);
+        const token = await pollForToken(
+          clientId,
+          flow,
+          controller.signal,
+          env.githubAuthBase,
+        );
         onSuccess(token);
       } catch (err) {
         if (controller.signal.aborted) return;
