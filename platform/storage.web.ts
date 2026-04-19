@@ -1,4 +1,8 @@
-import initSqlJs, { type Database as SqlJsDb, type SqlJsStatic } from 'sql.js';
+// Use the asm.js build — the WASM build requires serving sql-wasm.wasm
+// alongside the bundle, which Expo's dev server doesn't reliably do.
+// asm.js is slower but self-contained.
+import initSqlJs from 'sql.js/dist/sql-asm.js';
+import type { Database as SqlJsDb, SqlJsStatic } from 'sql.js';
 import type { Database, PlatformStorage } from './storage';
 
 export type { Database, PlatformStorage } from './storage';
@@ -31,16 +35,10 @@ function tx<T>(
   });
 }
 
-// Bumping this suffix busts any stale 404/HTML the browser cached from
-// an earlier load when the dev server wasn't yet serving public/.
-const WASM_VERSION = '1';
-
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
 function loadSqlJs(): Promise<SqlJsStatic> {
   if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs({
-      locateFile: (file: string) => `/${file}?v=${WASM_VERSION}`,
-    });
+    sqlJsPromise = initSqlJs() as Promise<SqlJsStatic>;
   }
   return sqlJsPromise;
 }
