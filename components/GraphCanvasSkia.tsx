@@ -258,15 +258,6 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const mountTier1 = jsActiveTier <= 2 && jsActiveTier >= 0;
   const mountTier2 = jsActiveTier >= 1;
 
-  const tier0InverseScaleX = useDerivedValue(() => [
-    { scaleX: 1 / scale.value },
-  ]);
-
-  const bucketFirstX = bucketNodes[0]?.x ?? 40;
-  const bucketFirstWidth = bucketNodes[0]?.width ?? 500;
-  const bucketLabelXSV = useDerivedValue(
-    () => (bucketFirstX + bucketFirstWidth + 16) / scale.value,
-  );
 
   return (
     <View
@@ -283,25 +274,23 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
             <Group transform={transform}>
               {mountTier0 && (
                 <Group opacity={opacity0}>
-                  <Group transform={tier0InverseScaleX}>
-                    {bucketNodes.map((b) => (
-                      <Rect
-                        key={b.id}
-                        x={b.x}
-                        y={b.y}
-                        width={b.width}
-                        height={b.height}
-                        color={b.color}
-                      />
-                    ))}
-                  </Group>
+                  {bucketNodes.map((b) => (
+                    <Rect
+                      key={b.id}
+                      x={b.x}
+                      y={b.y}
+                      width={b.width}
+                      height={b.height}
+                      color={b.color}
+                    />
+                  ))}
                   {bucketFont !== null &&
                     bucketNodes
                       .filter((b) => b.height >= 84)
                       .map((b) => (
                         <SkiaText
                           key={`t-${b.id}`}
-                          x={bucketLabelXSV}
+                          x={b.x + b.width + 16}
                           y={b.y + b.height / 2 + 26}
                           text={b.label}
                           font={bucketFont}
