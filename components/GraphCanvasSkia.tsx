@@ -258,12 +258,9 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const mountTier1 = jsActiveTier <= 2 && jsActiveTier >= 0;
   const mountTier2 = jsActiveTier >= 1;
 
-  const bucketBaseWidth = bucketNodes[0]?.width ?? 1000;
-  const bucketBaseX = bucketNodes[0]?.x ?? 40;
-  const bucketWidthSV = useDerivedValue(() => bucketBaseWidth / scale.value);
-  const bucketLabelXSV = useDerivedValue(
-    () => bucketBaseX + bucketBaseWidth / scale.value + 16,
-  );
+  const tier0InverseScaleX = useDerivedValue(() => [
+    { scaleX: 1 / scale.value },
+  ]);
 
   return (
     <View
@@ -279,30 +276,32 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
           <Canvas style={{ flex: 1 }}>
             <Group transform={transform}>
               {mountTier0 && (
-                <Group opacity={opacity0}>
-                  {bucketNodes.map((b) => (
-                    <Rect
-                      key={b.id}
-                      x={b.x}
-                      y={b.y}
-                      width={bucketWidthSV}
-                      height={b.height}
-                      color={b.color}
-                    />
-                  ))}
-                  {bucketFont !== null &&
-                    bucketNodes
-                      .filter((b) => b.height >= 84)
-                      .map((b) => (
-                        <SkiaText
-                          key={`t-${b.id}`}
-                          x={bucketLabelXSV}
-                          y={b.y + b.height / 2 + 26}
-                          text={b.label}
-                          font={bucketFont}
-                          color="#171717"
-                        />
-                      ))}
+                <Group transform={tier0InverseScaleX}>
+                  <Group opacity={opacity0}>
+                    {bucketNodes.map((b) => (
+                      <Rect
+                        key={b.id}
+                        x={b.x}
+                        y={b.y}
+                        width={b.width}
+                        height={b.height}
+                        color={b.color}
+                      />
+                    ))}
+                    {bucketFont !== null &&
+                      bucketNodes
+                        .filter((b) => b.height >= 84)
+                        .map((b) => (
+                          <SkiaText
+                            key={`t-${b.id}`}
+                            x={b.x + b.width + 16}
+                            y={b.y + b.height / 2 + 26}
+                            text={b.label}
+                            font={bucketFont}
+                            color="#171717"
+                          />
+                        ))}
+                  </Group>
                 </Group>
               )}
               {mountTier1 && (
