@@ -41,6 +41,7 @@ interface Props {
 
 export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const font = useFont(labelFontSource, 12);
+  const clusterFont = useFont(labelFontSource, 24);
   const bucketFont = useFont(labelFontSource, 72);
   const [_size, setSize] = useState({ width: 0, height: 0 });
   const wrapperRef = useRef<View | null>(null);
@@ -311,14 +312,14 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       color={c.color}
                     />
                   ))}
-                  {showLabels &&
+                  {clusterFont !== null &&
                     clusterNodes.map((c) => (
                       <SkiaText
                         key={`t-${c.id}`}
                         x={c.x + c.width + 6}
-                        y={c.y + 12}
+                        y={c.y + 20}
                         text={c.label}
-                        font={font}
+                        font={clusterFont}
                         color="#171717"
                         opacity={tier1LabelOpacity}
                       />
