@@ -17,6 +17,26 @@ Living status file. Update when finishing a phase, or when anything meaningful c
 
 ## Changelog
 
+### 2026-04-20 — Graph canvas polish (not tied to a phase)
+
+Interaction and visual refinements on top of the phase-3 canvas. No API/contract changes, no schema changes.
+
+**Smooth label fade-out.** `components/GraphCanvasSkia.tsx` — `tier1LabelOpacity` / `tier2LabelOpacity` replaced hard step gates (`scale >= X ? 1 : 0`) with Hermite smoothstep ramps over a ±`LABEL_FADE_HALF_WIDTH` (0.05) band centered on each threshold. Fade-in was smooth already; fade-out was snapping in one frame at the gate. Bucket labels (tier 0) already fade via group opacity and needed no change.
+
+**Tighter zoom bounds.** `MIN_SCALE = 0.15` (a bit past where the week tier reaches full opacity, for scannability at far-out zoom) and `MAX_SCALE = 1` (the landing scale — no over-zoom).
+
+**Vertical pan clamp.** New shared values `viewportH`, `contentTopY`, `contentBottomY`, populated from `onLayout` and a `commitYExtent` memo (adds ~1.5 commits of padding top/bottom via average inter-commit spacing). Pan/`withDecay`/pinch/web-wheel all clamp `translateY` to `[viewportH - scale*bottom, -scale*top]`; pin-to-top when content is shorter than viewport. Horizontal pan still locked.
+
+**Tier rects align to inter-commit midpoints.** `core/graph/layout.ts` — bucket and cluster `y` shifted up by `ROW_HEIGHT / 2` so rect top/bottom land between commits rather than over them. Makes week-boundary edges fall on the same y as the day tick marks.
+
+**Pill-shaped tier rects.** Bucket and cluster `<Rect>` swapped to `<RoundedRect>` with `r = width / 2`.
+
+**Softer / bolder week labels.** Bucket label color eased from `#171717` to `#737373`, rendered twice (filled + stroked via `<Paint style="stroke" strokeWidth={2}>`) to fake a bold weight without a bold font file (only SpaceMono-Regular ships with the app).
+
+**Day date markers.** New `DayMarkerOverlay` component rendered *outside* the scaled transform group so font size (12px) and line stroke stay at constant screen pixels regardless of zoom. Markers sit at the midpoint between the last commit of one day and the first of the next; label is left-aligned at fixed screen `x = 16` sitting 4px above the line, so the line-plus-label visually "owns" the commits below it. Week-start days (Monday, ISO week start matching tier 0) get a bolder stroke (1px) and line extending all the way past commit messages; other days get a thinner stroke (0.5px) and line ending at the right edge of the week rect with a symmetric 10px overhang on each side, ruler-tick style.
+
+**Files touched.** `components/GraphCanvasSkia.tsx`, `core/graph/layout.ts`. Typecheck clean. Not yet visually smoke-tested on Android emulator or iOS.
+
 ### 2026-04-19 — Phase 3 complete
 
 **Tier selection** (`core/graph/tierSelection.ts`) — pure function returning `0 | 1 | 2` from `(zoomLevel, viewportWidth, totalCommits, currentTier?, context?)`. Base thresholds at `scale = 0.7` (2↔1) and `scale = 0.35` (1↔0); hysteresis buffer `H = 0.05` only applies when `currentTier` is supplied. Clamps: `<10` commits stays at 2, `<50` never drops below 1, history span `<14d` never drops below 1. Phone-viewport bias (`< 500px`) bumps the 1↔2 edge up. Exports a `TIER_THRESHOLDS` constant so the canvas worklet can mirror literals without crossing the worklet boundary.

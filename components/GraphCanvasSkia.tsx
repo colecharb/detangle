@@ -7,7 +7,8 @@ import {
   Circle,
   Group,
   Line,
-  Rect,
+  Paint,
+  RoundedRect,
   Text as SkiaText,
   useFont,
 } from '@shopify/react-native-skia';
@@ -29,10 +30,16 @@ import type {
 } from '@core/graph';
 import { TIER_THRESHOLDS } from '@core/graph';
 
-const MIN_SCALE = 0.05;
-const MAX_SCALE = 5;
+const MIN_SCALE = 0.15;
+const MAX_SCALE = 1;
 const LABEL_MIN_SCALE = 0.8;
+const LABEL_FADE_HALF_WIDTH = 0.05;
+const TIER1_LABEL_MIN_SCALE = 0.5;
 const TAP_SLOP = 6;
+const LEFT_MARGIN = 120;
+const DAY_LINE_SWIMLANE_GAP = 10;
+const DAY_LINE_LEFT_X = 16;
+const DAY_LABEL_ABOVE_LINE_GAP = 4;
 
 interface Props {
   layouts: { 0: GraphLayout; 1: GraphLayout; 2: GraphLayout };
@@ -43,19 +50,21 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const font = useFont(labelFontSource, 12);
   const clusterFont = useFont(labelFontSource, 24);
   const bucketFont = useFont(labelFontSource, 72);
-  const [_size, setSize] = useState({ width: 0, height: 0 });
   const wrapperRef = useRef<View | null>(null);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const savedTy = useSharedValue(0);
+  const viewportH = useSharedValue(0);
+  const contentTopY = useSharedValue(0);
+  const contentBottomY = useSharedValue(0);
 
   const activeTierSV = useSharedValue<Tier>(2);
   const [jsActiveTier, setJsActiveTier] = useState<Tier>(2);
 
   useEffect(() => {
-    translateX.value = 0;
+    translateX.value = LEFT_MARGIN;
     translateY.value = 0;
     scale.value = 1;
     activeTierSV.value = 2;
@@ -98,12 +107,20 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   });
 
   const tier2LabelOpacity = useDerivedValue(() => {
-    const base = scale.value >= LABEL_MIN_SCALE ? 1 : 0;
+    const s = scale.value;
+    const a = LABEL_MIN_SCALE - LABEL_FADE_HALF_WIDTH;
+    const b = LABEL_MIN_SCALE + LABEL_FADE_HALF_WIDTH;
+    const t = Math.max(0, Math.min(1, (s - a) / (b - a)));
+    const base = t * t * (3 - 2 * t);
     return base * opacity2.value;
   });
 
   const tier1LabelOpacity = useDerivedValue(() => {
-    const base = scale.value >= 0.5 ? 1 : 0;
+    const s = scale.value;
+    const a = TIER1_LABEL_MIN_SCALE - LABEL_FADE_HALF_WIDTH;
+    const b = TIER1_LABEL_MIN_SCALE + LABEL_FADE_HALF_WIDTH;
+    const t = Math.max(0, Math.min(1, (s - a) / (b - a)));
+    const base = t * t * (3 - 2 * t);
     return base * opacity1.value;
   });
 
@@ -164,6 +181,90 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     return max + 16;
   }, [bucketNodes]);
 
+  const commitYExtent = useMemo(() => {
+    let top = Infinity;
+    let bottom = -Infinity;
+    for (const n of commitNodes) {
+      top = Math.min(top, n.y - n.radius);
+      bottom = Math.max(bottom, n.y + n.radius);
+    }
+    if (!isFinite(top)) return { top: 0, bottom: 0 };
+    const spacing =
+      commitNodes.length > 1
+        ? (bottom - top) / (commitNodes.length - 1)
+        : 0;
+    const pad = spacing * 1.5;
+    return { top: top - pad, bottom: bottom + pad };
+  }, [commitNodes]);
+
+  useEffect(() => {
+    contentTopY.value = commitYExtent.top;
+    contentBottomY.value = commitYExtent.bottom;
+  }, [commitYExtent, contentTopY, contentBottomY]);
+
+  const dayMarkers = useMemo(() => {
+    if (commitNodes.length === 0) return [];
+    const sorted = [...commitNodes].sort((a, b) => a.y - b.y);
+    const dayKey = (n: CommitNode) => {
+      const d = new Date(n.meta.committedAt * 1000);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const labelFor = (key: string) => {
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    };
+    const isWeekStartKey = (key: string) => {
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m - 1, d).getDay() === 1; // Monday
+    };
+    const markers: {
+      key: string;
+      y: number;
+      label: string;
+      isWeekStart: boolean;
+    }[] = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prevKey = dayKey(sorted[i - 1]);
+      const currKey = dayKey(sorted[i]);
+      if (prevKey !== currKey) {
+        markers.push({
+          key: prevKey,
+          y: (sorted[i - 1].y + sorted[i].y) / 2,
+          label: labelFor(prevKey),
+          isWeekStart: isWeekStartKey(prevKey),
+        });
+      }
+    }
+    const last = sorted[sorted.length - 1];
+    const lastKey = dayKey(last);
+    markers.push({
+      key: lastKey,
+      y: last.y + last.radius + 12,
+      label: labelFor(lastKey),
+      isWeekStart: isWeekStartKey(lastKey),
+    });
+    return markers;
+  }, [commitNodes]);
+
+  const bucketXMax = useMemo(() => {
+    let max = -Infinity;
+    for (const b of bucketNodes) max = Math.max(max, b.x + b.width);
+    return isFinite(max) ? max : 0;
+  }, [bucketNodes]);
+
+  const dayLineEndX = useMemo(() => {
+    if (font === null) return tier2LabelX + 600;
+    let maxWidth = 0;
+    for (const n of commitNodes) {
+      if (n.label) maxWidth = Math.max(maxWidth, font.getTextWidth(n.label));
+    }
+    return tier2LabelX + maxWidth + 16;
+  }, [font, commitNodes, tier2LabelX]);
+
   const handleTapAt = useCallback(
     (sx: number, sy: number) => {
       if (jsActiveTier !== 2) return;
@@ -193,12 +294,21 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
           cancelAnimation(translateY);
         })
         .onChange((e) => {
-          translateY.value += e.changeY;
+          const ty = translateY.value + e.changeY;
+          const s = scale.value;
+          const min = viewportH.value - s * contentBottomY.value;
+          const max = -s * contentTopY.value;
+          translateY.value =
+            min > max ? max : Math.min(max, Math.max(min, ty));
         })
         .onEnd((e) => {
-          translateY.value = withDecay({ velocity: e.velocityY });
+          const s = scale.value;
+          const min = viewportH.value - s * contentBottomY.value;
+          const max = -s * contentTopY.value;
+          const clamp: [number, number] = min > max ? [max, max] : [min, max];
+          translateY.value = withDecay({ velocity: e.velocityY, clamp });
         }),
-    [translateY],
+    [translateY, scale, viewportH, contentBottomY, contentTopY],
   );
 
   const pinch = useMemo(
@@ -216,9 +326,13 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
           );
           const factor = newScale / savedScale.value;
           scale.value = newScale;
-          translateY.value = e.focalY - (e.focalY - savedTy.value) * factor;
+          const ty = e.focalY - (e.focalY - savedTy.value) * factor;
+          const min = viewportH.value - newScale * contentBottomY.value;
+          const max = -newScale * contentTopY.value;
+          translateY.value =
+            min > max ? max : Math.min(max, Math.max(min, ty));
         }),
-    [scale, translateY, savedScale, savedTy],
+    [scale, translateY, savedScale, savedTy, viewportH, contentBottomY, contentTopY],
   );
 
   const tap = useMemo(
@@ -243,21 +357,27 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     const onWheel = (ev: WheelEvent) => {
       ev.preventDefault();
       cancelAnimation(translateY);
+      let newTy: number;
+      let newS: number;
       if (ev.ctrlKey) {
         const rect = el.getBoundingClientRect();
         const fy = ev.clientY - rect.top;
         const zoom = Math.exp(-ev.deltaY * 0.01);
-        const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * zoom));
-        const factor = newScale / scale.value;
-        translateY.value = fy - (fy - translateY.value) * factor;
-        scale.value = newScale;
+        newS = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * zoom));
+        const factor = newS / scale.value;
+        newTy = fy - (fy - translateY.value) * factor;
       } else {
-        translateY.value -= ev.deltaY;
+        newS = scale.value;
+        newTy = translateY.value - ev.deltaY;
       }
+      const min = viewportH.value - newS * contentBottomY.value;
+      const max = -newS * contentTopY.value;
+      scale.value = newS;
+      translateY.value = min > max ? max : Math.min(max, Math.max(min, newTy));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [scale, translateY]);
+  }, [scale, translateY, viewportH, contentBottomY, contentTopY]);
 
   const showLabels = font !== null;
   const mountTier0 = jsActiveTier <= 1;
@@ -270,9 +390,9 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
       ref={wrapperRef}
       className="flex-1 bg-neutral-50"
       style={Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : undefined}
-      onLayout={(e) =>
-        setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
-      }
+      onLayout={(e) => {
+        viewportH.value = e.nativeEvent.layout.height;
+      }}
     >
       <GestureDetector gesture={composed}>
         <View style={{ flex: 1 }}>
@@ -281,12 +401,13 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
               {mountTier0 && (
                 <Group opacity={opacity0}>
                   {bucketNodes.map((b) => (
-                    <Rect
+                    <RoundedRect
                       key={b.id}
                       x={b.x}
                       y={b.y}
                       width={b.width}
                       height={b.height}
+                      r={b.width / 2}
                       color={b.color}
                     />
                   ))}
@@ -294,26 +415,40 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     bucketNodes
                       .filter((b) => b.height >= 84)
                       .map((b) => (
-                        <SkiaText
-                          key={`t-${b.id}`}
-                          x={tier0LabelX}
-                          y={b.y + b.height / 2 + 26}
-                          text={b.label}
-                          font={bucketFont}
-                          color="#171717"
-                        />
+                        <Group key={`t-${b.id}`}>
+                          <SkiaText
+                            x={tier0LabelX}
+                            y={b.y + b.height / 2 + 26}
+                            text={b.label}
+                            font={bucketFont}
+                            color="#737373"
+                          />
+                          <SkiaText
+                            x={tier0LabelX}
+                            y={b.y + b.height / 2 + 26}
+                            text={b.label}
+                            font={bucketFont}
+                          >
+                            <Paint
+                              color="#737373"
+                              style="stroke"
+                              strokeWidth={2}
+                            />
+                          </SkiaText>
+                        </Group>
                       ))}
                 </Group>
               )}
               {mountTier1 && (
                 <Group opacity={opacity1}>
                   {clusterNodes.map((c) => (
-                    <Rect
+                    <RoundedRect
                       key={c.id}
                       x={c.x}
                       y={c.y}
                       width={c.width}
                       height={c.height}
+                      r={c.width / 2}
                       color={c.color}
                     />
                   ))}
@@ -360,9 +495,76 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                 </Group>
               )}
             </Group>
+            {font !== null &&
+              dayMarkers.map((m) => (
+                <DayMarkerOverlay
+                  key={m.key}
+                  worldY={m.y}
+                  worldLineEndX={m.isWeekStart ? dayLineEndX : bucketXMax}
+                  strokeWidth={m.isWeekStart ? 1 : 0.5}
+                  label={m.label}
+                  font={font}
+                  translateX={translateX}
+                  translateY={translateY}
+                  scale={scale}
+                />
+              ))}
           </Canvas>
         </View>
       </GestureDetector>
     </View>
+  );
+}
+
+interface DayMarkerOverlayProps {
+  worldY: number;
+  worldLineEndX: number;
+  strokeWidth: number;
+  label: string;
+  font: NonNullable<ReturnType<typeof useFont>>;
+  translateX: ReturnType<typeof useSharedValue<number>>;
+  translateY: ReturnType<typeof useSharedValue<number>>;
+  scale: ReturnType<typeof useSharedValue<number>>;
+}
+
+function DayMarkerOverlay({
+  worldY,
+  worldLineEndX,
+  strokeWidth,
+  label,
+  font,
+  translateX,
+  translateY,
+  scale,
+}: DayMarkerOverlayProps) {
+  const p1 = useDerivedValue(() => ({
+    x: DAY_LINE_LEFT_X,
+    y: translateY.value + scale.value * worldY,
+  }));
+  const p2 = useDerivedValue(() => {
+    const endX =
+      translateX.value +
+      scale.value * worldLineEndX +
+      DAY_LINE_SWIMLANE_GAP;
+    return {
+      x: Math.max(DAY_LINE_LEFT_X, endX),
+      y: translateY.value + scale.value * worldY,
+    };
+  });
+  const textY = useDerivedValue(
+    () =>
+      translateY.value + scale.value * worldY - DAY_LABEL_ABOVE_LINE_GAP,
+  );
+  return (
+    <>
+      <Line p1={p1} p2={p2} color="#a3a3a3" strokeWidth={strokeWidth} />
+      <SkiaText
+        x={DAY_LINE_LEFT_X}
+        y={textY}
+        text={label}
+        font={font}
+        color="#525252"
+      />
+    </>
   );
 }
