@@ -1,12 +1,14 @@
 import type { Database } from '@platform/storage';
 import { hasCommit, upsertCommits, type Commit } from '../storage/commits';
 import { listRefs as listStoredRefs, upsertRefs, type Ref } from '../storage/refs';
+import { upsertPulls } from '../storage/pulls';
 import { setLastSynced, upsertRepo } from '../storage/repos';
 import type { CommitSummary, GitHubClient } from './client';
 
 export interface SyncResult {
   commitsAdded: number;
   refsUpdated: number;
+  prsEnriched: number;
   durationMs: number;
 }
 
@@ -90,9 +92,19 @@ export async function syncRepo(
   const syncedAt = Math.floor(Date.now() / 1000);
   await setLastSynced(db, repo.id, syncedAt);
 
+  onProgress?.('pulls', 0);
+  let prsEnriched = 0;
+  try {
+    const { commitsUpdated } = await enrichWithPullRequests(client, db, owner, name);
+    prsEnriched = commitsUpdated;
+  } catch (err) {
+    console.warn('[sync] PR enrichment failed:', err);
+  }
+
   return {
     commitsAdded,
     refsUpdated: changedRefs.length,
+    prsEnriched,
     durationMs: Date.now() - startedAt,
   };
 }
@@ -105,6 +117,17 @@ export async function enrichWithPullRequests(
 ): Promise<{ commitsUpdated: number }> {
   const repo = await upsertRepo(db, owner, name);
   const pulls = await client.listPulls(owner, name);
+
+  await upsertPulls(
+    db,
+    repo.id,
+    pulls.map((p) => ({
+      number: p.number,
+      title: p.title,
+      mergeCommitSha: p.mergeCommitSha,
+    })),
+  );
+
   let updated = 0;
   for (const p of pulls) {
     if (!p.mergeCommitSha) continue;

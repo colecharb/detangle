@@ -6,6 +6,26 @@ Format: `## YYYY-MM-DD — Title` / Decision / Rationale / Alternatives consider
 
 ---
 
+## 2026-04-19 — Phase 3: opacity-only crossfade, tier-1 edges omitted, cluster taps inert
+
+**Decision:** Semantic-zoom tier transitions crossfade by opacity alone (no position-interpolation between layouts). Tier 1 renders no cluster-to-cluster edges in v1. Tapping a Tier 1 cluster or a Tier 0 bucket is inert — only Tier 2 commit taps are handled in phase 3.
+
+**Rationale:**
+- Tier 1 cluster geometry reuses Tier 2's `topoSort + assignLanes` math (same x per lane, same y per row range), so clusters spatially overlay the commits they contain. Crossfading opacity between aligned shapes reads as "same graph, different scale" without extra interpolation work.
+- Position-interpolation would require a stable identity mapping from every `CommitNode` to its containing `ClusterNode` / `BucketNode`, plus per-frame interpolation across the worklet boundary carrying 3× the data. The visual payoff at a 5% hysteresis buffer is small.
+- Cluster-to-cluster edges add an anchor-picking step per cluster and an extra reduction pass on the commit graph. Tier 2 still shows topology; tier 1 is the "shape of activity" zoom, not the structure zoom.
+- Cluster-tap drill-in would need a new sheet component and commit-list UI — natural fit for phase 4 when multi-view / cluster-list infrastructure lands.
+- Tier 0 bucket tap → date-range filter fits phase 5's filter-first UX, not phase 3's semantic-zoom scope.
+
+**Alternatives considered:**
+- Full position-morph between tiers — rejected; complexity/payoff ratio is poor at the chosen hysteresis buffer. Revisit in phase 6 polish if users report flicker.
+- Inline cluster edges computed from first/last commit anchors — rejected; spec creep for a tier whose job is gestalt, not topology.
+- Ship cluster-tap drill-in in phase 3 — rejected; UI machinery is cleaner to build alongside the other views in phase 4.
+
+**Revisit when:** Phase 6 polish (crossfade feel, cluster edges) or phase 4 (cluster-tap drill-in with the other-views UI).
+
+---
+
 ## 2026-04-19 — sql.js on web, expo-sqlite on native
 
 **Decision:** `/platform/storage.web.ts` uses `sql.js` (pure-WASM SQLite in the main thread). `/platform/storage.native.ts` continues to use `expo-sqlite`. The WASM binary is vendored at `public/sql-wasm.wasm` and served by Expo's static hosting.

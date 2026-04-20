@@ -89,6 +89,22 @@ export interface Ref {
 
 export async function upsertRefs(db: Database, refs: Ref[]): Promise<void>;
 export async function listRefs(db: Database, repoId: number): Promise<Ref[]>;
+
+// /core/storage/pulls.ts
+export interface Pull {
+  repoId: number;
+  number: number;
+  title: string;
+  mergeCommitSha: string | null;
+}
+
+export async function upsertPulls(
+  db: Database,
+  repoId: number,
+  pulls: { number: number; title: string; mergeCommitSha: string | null }[],
+): Promise<void>;
+
+export async function listPulls(db: Database, repoId: number): Promise<Pull[]>;
 ```
 
 ---
@@ -137,6 +153,7 @@ export interface PullSummary { number: number; mergeCommitSha: string | null; ti
 export interface SyncResult {
   commitsAdded: number;
   refsUpdated: number;
+  prsEnriched: number;    // 0 if enrichment was skipped or errored
   durationMs: number;
 }
 
@@ -197,6 +214,7 @@ export interface BucketNode {
   height: number;
   count: number;
   color: string;
+  label: string;        // human-readable week-start date + count, e.g. "Apr 6 · 12"
 }
 
 export interface Edge {
@@ -214,19 +232,47 @@ export interface GraphLayout {
 }
 
 // /core/graph/tierSelection.ts
-export function selectTier(zoomLevel: number, viewportWidth: number, totalCommits: number): Tier;
+export interface TierSelectionContext {
+  totalCommits: number;
+  spanSeconds?: number;   // maxCommittedAt - minCommittedAt; clamps behavior on narrow-history repos
+}
+
+export function selectTier(
+  zoomLevel: number,
+  viewportWidth: number,
+  totalCommits: number,
+  currentTier?: Tier,       // enables hysteresis when provided
+  context?: TierSelectionContext,
+): Tier;
+
+export const TIER_THRESHOLDS: {
+  tier1to2: number;
+  tier0to1: number;
+  hysteresis: number;
+  phoneBias: number;
+  phoneViewportCutoff: number;
+};
 
 // /core/graph/layout.ts — top-level dispatcher
+export interface LayoutContext {
+  prTitles?: Map<number, string>;
+}
+
 export function layoutGraph(
   commits: Commit[],
   refs: Ref[],
   viewMode: ViewMode,
   tier: Tier,
+  context?: LayoutContext,
 ): GraphLayout;
 
 // Individual layout functions (used by the dispatcher, exported for testability)
 export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout;
-export function tier1LayoutSwimLane(commits: Commit[], refs: Ref[]): GraphLayout;
+export function tier1LayoutSwimLane(
+  commits: Commit[],
+  refs: Ref[],
+  prTitles?: Map<number, string>,
+): GraphLayout;
 export function tier2LayoutSwimLane(commits: Commit[], refs: Ref[]): GraphLayout;
 
 export function tier0LayoutAuthorLanes(commits: Commit[]): GraphLayout;

@@ -3,7 +3,7 @@ import { WithSkiaWeb } from '@shopify/react-native-skia/lib/module/web';
 import type { GraphLayout } from '@core/graph';
 
 interface Props {
-  layout: GraphLayout;
+  layouts: { 0: GraphLayout; 1: GraphLayout; 2: GraphLayout };
   onCommitTap: (sha: string) => void;
 }
 
