@@ -262,6 +262,12 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     { scaleX: 1 / scale.value },
   ]);
 
+  const bucketFirstX = bucketNodes[0]?.x ?? 40;
+  const bucketFirstWidth = bucketNodes[0]?.width ?? 500;
+  const bucketLabelXSV = useDerivedValue(
+    () => (bucketFirstX + bucketFirstWidth + 16) / scale.value,
+  );
+
   return (
     <View
       ref={wrapperRef}
@@ -276,8 +282,8 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
           <Canvas style={{ flex: 1 }}>
             <Group transform={transform}>
               {mountTier0 && (
-                <Group transform={tier0InverseScaleX}>
-                  <Group opacity={opacity0}>
+                <Group opacity={opacity0}>
+                  <Group transform={tier0InverseScaleX}>
                     {bucketNodes.map((b) => (
                       <Rect
                         key={b.id}
@@ -288,20 +294,20 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                         color={b.color}
                       />
                     ))}
-                    {bucketFont !== null &&
-                      bucketNodes
-                        .filter((b) => b.height >= 84)
-                        .map((b) => (
-                          <SkiaText
-                            key={`t-${b.id}`}
-                            x={b.x + b.width + 16}
-                            y={b.y + b.height / 2 + 26}
-                            text={b.label}
-                            font={bucketFont}
-                            color="#171717"
-                          />
-                        ))}
                   </Group>
+                  {bucketFont !== null &&
+                    bucketNodes
+                      .filter((b) => b.height >= 84)
+                      .map((b) => (
+                        <SkiaText
+                          key={`t-${b.id}`}
+                          x={bucketLabelXSV}
+                          y={b.y + b.height / 2 + 26}
+                          text={b.label}
+                          font={bucketFont}
+                          color="#171717"
+                        />
+                      ))}
                 </Group>
               )}
               {mountTier1 && (
