@@ -9,13 +9,50 @@ Living status file. Update when finishing a phase, or when anything meaningful c
 | 0 — Scaffolding | complete (2026-04-19) | Expo SDK 54 (SDK 55 not yet released) |
 | 1 — Auth & Sync | complete (2026-04-19) | |
 | 2 — Graph Canvas + Tier 2 | complete (2026-04-19) | swimlane tier 2 only; authorLanes tier 2 still stub (phase 4) |
-| 3 — Semantic Zoom | not started | |
+| 3 — Semantic Zoom | complete (2026-04-19) | swimlane only; tier-1 cluster edges + cluster-tap drill-in deferred |
 | 4 — Other Views | not started | |
 | 5 — Filter-first UX | not started | |
 | 6 — Polish | not started | |
 | 7 — Ship | not started | |
 
 ## Changelog
+
+### 2026-04-19 — Phase 3 complete
+
+**Tier selection** (`core/graph/tierSelection.ts`) — pure function returning `0 | 1 | 2` from `(zoomLevel, viewportWidth, totalCommits, currentTier?, context?)`. Base thresholds at `scale = 0.7` (2↔1) and `scale = 0.35` (1↔0); hysteresis buffer `H = 0.05` only applies when `currentTier` is supplied. Clamps: `<10` commits stays at 2, `<50` never drops below 1, history span `<14d` never drops below 1. Phone-viewport bias (`< 500px`) bumps the 1↔2 edge up. Exports a `TIER_THRESHOLDS` constant so the canvas worklet can mirror literals without crossing the worklet boundary.
+
+**Tier 0 layout** (`tier0LayoutSwimLane`). Week-bucket histogram, vertical stack with newest week on top. ISO-week keys via new `core/graph/time.ts` (`isoWeekKey`, `isoWeekStart`, `weekKeysBetween`, all UTC). Empty weeks between min/max are rendered at minimum height in the coldest color so vertical position stays monotonic with time. Colors quintile-binned over the bucket counts themselves (relative-to-repo heat). Edges are empty — tier 0 is a histogram.
+
+**Tier 1 layout** (`tier1LayoutSwimLane`). Runs `topoSort + assignLanes` so cluster geometry reuses tier 2's row/lane math — this spatial alignment is what makes the opacity-only crossfade read correctly. Grouping precedence: (1) commits with a non-null `prNumber` collapse into one cluster; (2) fallback contiguous same-author same-lane runs; single-commit runs are valid. Clusters are narrow capsules (`LANE_WIDTH`) with `height = (lastRow - firstRow + 1) * ROW_HEIGHT`, colored with the lane palette. Labels: `"#123 Title · 5 commits"` for PRs when a title is cached, `"{author} · N"` for author runs, truncated first line for single-commit runs. Edges intentionally omitted at tier 1 (deferred to phase 6 polish).
+
+**Layout dispatcher** grew an optional `LayoutContext = { prTitles?: Map<number, string> }` trailing parameter. Tier 1 labels read PR titles from it.
+
+**PR title cache** — new `pulls` table `(repo_id, number, title, merge_commit_sha)` keyed by `(repo_id, number)`. New `core/storage/pulls.ts` with `upsertPulls` / `listPulls` following the `refs.ts` pattern. `enrichWithPullRequests` now upserts pulls alongside its existing `UPDATE commits SET pr_number` pass.
+
+**Sync wiring** — `syncRepo` now runs `enrichWithPullRequests` as a final best-effort step inside a try/catch; any failure is swallowed and `prsEnriched = 0`. `SyncResult` grew a `prsEnriched` field; the route's status line appends ` · N PRs` when non-zero. The existing regex heuristic in `parsePrNumberFromMessage` continues to populate `pr_number` at commit-insert time; `COALESCE(excluded.pr_number, commits.pr_number)` keeps the two passes non-destructive.
+
+**Canvas** (`components/GraphCanvasSkia.tsx`). New props shape: `{ layouts: Record<Tier, GraphLayout>, onCommitTap }`. Three `<Group>` subtrees inside the outer transform, each with its own opacity `useDerivedValue`. Opacities are pure worklet smoothstep through `[threshold - H, threshold + H]` buffers — outside transition zones exactly one tier has `opacity = 1`, inside, two tiers crossfade summing to 1. Active tier for tap routing and mount short-circuit is a `Tier` shared value updated from `useAnimatedReaction(() => scale.value)`; `runOnJS` mirrors it to `jsActiveTier` state. Tap handling is gated on `jsActiveTier === 2`; tier 0 and tier 1 taps are inert (cluster-tap drill-in deferred per phase-3 scope decision).
+
+**Route** (`app/[owner]/[repo].tsx`) loads commits/refs/pulls in parallel, builds the `prTitles` map, and precomputes all three swimlane layouts in one shot on load/resync. The canvas receives all three at once.
+
+**CORE_API.md** updates (same commits as code): `selectTier` signature + `TIER_THRESHOLDS` constant, `LayoutContext` and the `layoutGraph` / `tier1LayoutSwimLane` signature bump, `SyncResult.prsEnriched`, new `Pull` type and accessors.
+
+**Verification.**
+- `tsc --noEmit` clean after every intermediate commit.
+- `/core` purity grep clean (no `react-native`, `expo-*`, `@shopify/react-native-skia`, `window.`, `document.` imports).
+- Dispatcher returns for all `(swimlane, t)` in `{0, 1, 2}`; `authorLanes` / `heatmap` still throw the phase-4 stubs.
+- Not yet visually smoke-tested on web or device for this phase; first run will validate threshold calibration and crossfade feel. Android emulator boot still unexercised (carried forward from phase 1).
+
+**Deviations from plan.**
+- Commits 8 and 9 (canvas + route) were bundled into a single commit. Splitting them left the intermediate tree with a type error because the canvas API and the route's call site are a single logical change.
+- `weekKeysBetween` was added alongside `isoWeekKey` / `isoWeekStart` (not originally called out) to simplify filling empty weeks in the tier-0 layout.
+
+**Carried forward to later phases.**
+- Tier-1 cluster-to-cluster edges — phase 6 polish candidate.
+- Cluster-tap drill-in (tier 1) — phase 4, when the cluster-list / other-views UI machinery lands.
+- Tier-0 bucket-tap → date-range filter — phase 5, fits with filter-first UX.
+- Author-lanes and heatmap views — phase 4.
+- Threshold calibration from live smoke testing — tune `{0.35, 0.7}` based on label legibility and commit density if needed.
 
 ### 2026-04-19 — Phase 2 complete
 
