@@ -148,13 +148,21 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     [layouts],
   );
 
-  const labelColumnX = useMemo(() => {
+  const tier2LabelX = useMemo(() => {
     let max = 0;
     for (const n of commitNodes) max = Math.max(max, n.x + n.radius);
+    return max + 16;
+  }, [commitNodes]);
+  const tier1LabelX = useMemo(() => {
+    let max = 0;
     for (const c of clusterNodes) max = Math.max(max, c.x + c.width);
+    return max + 16;
+  }, [clusterNodes]);
+  const tier0LabelX = useMemo(() => {
+    let max = 0;
     for (const b of bucketNodes) max = Math.max(max, b.x + b.width);
     return max + 16;
-  }, [commitNodes, clusterNodes, bucketNodes]);
+  }, [bucketNodes]);
 
   const handleTapAt = useCallback(
     (sx: number, sy: number) => {
@@ -288,7 +296,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       .map((b) => (
                         <SkiaText
                           key={`t-${b.id}`}
-                          x={labelColumnX}
+                          x={tier0LabelX}
                           y={b.y + b.height / 2 + 26}
                           text={b.label}
                           font={bucketFont}
@@ -313,7 +321,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     clusterNodes.map((c) => (
                       <SkiaText
                         key={`t-${c.id}`}
-                        x={labelColumnX}
+                        x={tier1LabelX}
                         y={c.y + 20}
                         text={c.label}
                         font={clusterFont}
@@ -341,7 +349,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     commitNodes.map((n) => (
                       <SkiaText
                         key={`t-${n.sha}`}
-                        x={labelColumnX}
+                        x={tier2LabelX}
                         y={n.y + 4}
                         text={n.label ?? ''}
                         font={font}
