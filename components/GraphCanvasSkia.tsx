@@ -49,7 +49,6 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
-  const savedTx = useSharedValue(0);
   const savedTy = useSharedValue(0);
 
   const activeTierSV = useSharedValue<Tier>(2);
@@ -175,28 +174,23 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     () =>
       Gesture.Pan()
         .onStart(() => {
-          cancelAnimation(translateX);
           cancelAnimation(translateY);
         })
         .onChange((e) => {
-          translateX.value += e.changeX;
           translateY.value += e.changeY;
         })
         .onEnd((e) => {
-          translateX.value = withDecay({ velocity: e.velocityX });
           translateY.value = withDecay({ velocity: e.velocityY });
         }),
-    [translateX, translateY],
+    [translateY],
   );
 
   const pinch = useMemo(
     () =>
       Gesture.Pinch()
         .onStart(() => {
-          cancelAnimation(translateX);
           cancelAnimation(translateY);
           savedScale.value = scale.value;
-          savedTx.value = translateX.value;
           savedTy.value = translateY.value;
         })
         .onUpdate((e) => {
@@ -206,10 +200,9 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
           );
           const factor = newScale / savedScale.value;
           scale.value = newScale;
-          translateX.value = e.focalX - (e.focalX - savedTx.value) * factor;
           translateY.value = e.focalY - (e.focalY - savedTy.value) * factor;
         }),
-    [scale, translateX, translateY, savedScale, savedTx, savedTy],
+    [scale, translateY, savedScale, savedTy],
   );
 
   const tap = useMemo(
@@ -233,26 +226,22 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     if (!el) return;
     const onWheel = (ev: WheelEvent) => {
       ev.preventDefault();
-      cancelAnimation(translateX);
       cancelAnimation(translateY);
       if (ev.ctrlKey) {
         const rect = el.getBoundingClientRect();
-        const fx = ev.clientX - rect.left;
         const fy = ev.clientY - rect.top;
         const zoom = Math.exp(-ev.deltaY * 0.01);
         const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * zoom));
         const factor = newScale / scale.value;
-        translateX.value = fx - (fx - translateX.value) * factor;
         translateY.value = fy - (fy - translateY.value) * factor;
         scale.value = newScale;
       } else {
-        translateX.value -= ev.deltaX;
         translateY.value -= ev.deltaY;
       }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [scale, translateX, translateY]);
+  }, [scale, translateY]);
 
   const showLabels = font !== null;
   const mountTier0 = jsActiveTier <= 1;
