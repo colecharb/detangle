@@ -258,6 +258,13 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const mountTier1 = jsActiveTier <= 2 && jsActiveTier >= 0;
   const mountTier2 = jsActiveTier >= 1;
 
+  const bucketBaseWidth = bucketNodes[0]?.width ?? 1000;
+  const bucketBaseX = bucketNodes[0]?.x ?? 40;
+  const bucketWidthSV = useDerivedValue(() => bucketBaseWidth / scale.value);
+  const bucketLabelXSV = useDerivedValue(
+    () => bucketBaseX + bucketBaseWidth / scale.value + 16,
+  );
+
   return (
     <View
       ref={wrapperRef}
@@ -278,7 +285,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       key={b.id}
                       x={b.x}
                       y={b.y}
-                      width={b.width}
+                      width={bucketWidthSV}
                       height={b.height}
                       color={b.color}
                     />
@@ -289,7 +296,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       .map((b) => (
                         <SkiaText
                           key={`t-${b.id}`}
-                          x={b.x + b.width + 16}
+                          x={bucketLabelXSV}
                           y={b.y + b.height / 2 + 26}
                           text={b.label}
                           font={bucketFont}
