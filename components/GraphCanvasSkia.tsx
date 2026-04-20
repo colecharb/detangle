@@ -148,6 +148,14 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
     [layouts],
   );
 
+  const labelColumnX = useMemo(() => {
+    let max = 0;
+    for (const n of commitNodes) max = Math.max(max, n.x + n.radius);
+    for (const c of clusterNodes) max = Math.max(max, c.x + c.width);
+    for (const b of bucketNodes) max = Math.max(max, b.x + b.width);
+    return max + 16;
+  }, [commitNodes, clusterNodes, bucketNodes]);
+
   const handleTapAt = useCallback(
     (sx: number, sy: number) => {
       if (jsActiveTier !== 2) return;
@@ -280,7 +288,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       .map((b) => (
                         <SkiaText
                           key={`t-${b.id}`}
-                          x={b.x + b.width + 16}
+                          x={labelColumnX}
                           y={b.y + b.height / 2 + 26}
                           text={b.label}
                           font={bucketFont}
@@ -305,7 +313,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     clusterNodes.map((c) => (
                       <SkiaText
                         key={`t-${c.id}`}
-                        x={c.x + c.width + 6}
+                        x={labelColumnX}
                         y={c.y + 20}
                         text={c.label}
                         font={clusterFont}
@@ -333,7 +341,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     commitNodes.map((n) => (
                       <SkiaText
                         key={`t-${n.sha}`}
-                        x={n.x + n.radius + 6}
+                        x={labelColumnX}
                         y={n.y + 4}
                         text={n.label ?? ''}
                         font={font}
