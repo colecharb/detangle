@@ -128,7 +128,7 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
     const count = counts.get(key) ?? 0;
     const rowStart = firstRow.get(key) ?? 0;
     const rowEnd = lastRow.get(key) ?? rowStart;
-    const y = PADDING + rowStart * ROW_HEIGHT;
+    const y = PADDING + rowStart * ROW_HEIGHT - ROW_HEIGHT / 2;
     const height = (rowEnd - rowStart + 1) * ROW_HEIGHT;
     return {
       id: key,
@@ -234,7 +234,7 @@ export function tier1LayoutSwimLane(
 
   const nodes: ClusterNode[] = allClusters.map((cluster) => {
     const x = PADDING + cluster.lane * LANE_WIDTH - LANE_WIDTH / 2;
-    const y = PADDING + cluster.firstRow * ROW_HEIGHT;
+    const y = PADDING + cluster.firstRow * ROW_HEIGHT - ROW_HEIGHT / 2;
     const height = (cluster.lastRow - cluster.firstRow + 1) * ROW_HEIGHT;
 
     let label: string;
