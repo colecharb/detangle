@@ -288,7 +288,7 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       <SkiaText
                         key={`t-${b.id}`}
                         x={b.x + b.width + 12}
-                        y={b.y + b.height / 2 + 16}
+                        y={b.y + b.height / 2 + 18}
                         text={b.label}
                         font={bucketFont}
                         color="#171717"
