@@ -284,16 +284,18 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                     />
                   ))}
                   {bucketFont !== null &&
-                    bucketNodes.map((b) => (
-                      <SkiaText
-                        key={`t-${b.id}`}
-                        x={b.x + b.width + 12}
-                        y={b.y + b.height / 2 + 18}
-                        text={b.label}
-                        font={bucketFont}
-                        color="#171717"
-                      />
-                    ))}
+                    bucketNodes
+                      .filter((b) => b.height >= 56)
+                      .map((b) => (
+                        <SkiaText
+                          key={`t-${b.id}`}
+                          x={b.x + b.width + 12}
+                          y={b.y + b.height / 2 + 18}
+                          text={b.label}
+                          font={bucketFont}
+                          color="#171717"
+                        />
+                      ))}
                 </Group>
               )}
               {mountTier1 && (

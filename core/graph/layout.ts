@@ -23,10 +23,6 @@ const NODE_RADIUS = 5;
 const PADDING = 40;
 
 const BUCKET_WIDTH = 120;
-const BUCKET_GAP = 8;
-const BUCKET_MIN_HEIGHT = 56;
-const BUCKET_HEIGHT_PER_COMMIT = 0.8;
-const BUCKET_HEIGHT_COMMIT_CAP = 100;
 
 const BUCKET_PALETTE = ['#e5e5e5', '#bae6fd', '#60a5fa', '#2563eb', '#1e3a8a'];
 
@@ -93,42 +89,45 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
     };
   }
 
+  // Walk commits in the same topo order tier 2 uses so each week's bucket
+  // occupies the exact row range its commits land in.
+  const sorted = topoSort(commits);
   const counts = new Map<string, number>();
-  let minTs = Infinity;
-  let maxTs = -Infinity;
-  for (const c of commits) {
-    const key = isoWeekKey(c.committedAt);
+  const firstRow = new Map<string, number>();
+  const lastRow = new Map<string, number>();
+
+  for (let row = 0; row < sorted.length; row++) {
+    const key = isoWeekKey(sorted[row].committedAt);
     counts.set(key, (counts.get(key) ?? 0) + 1);
-    if (c.committedAt < minTs) minTs = c.committedAt;
-    if (c.committedAt > maxTs) maxTs = c.committedAt;
+    if (!firstRow.has(key)) firstRow.set(key, row);
+    lastRow.set(key, row);
   }
 
-  const allKeys = weekKeysBetween(minTs, maxTs);
   const sortedCounts = [...counts.values()].sort((a, b) => a - b);
 
-  const orderedNewestFirst = [...allKeys].sort(
-    (a, b) => isoWeekStart(b) - isoWeekStart(a),
-  );
+  const keys = [...counts.keys()].sort((a, b) => {
+    const fa = firstRow.get(a) ?? 0;
+    const fb = firstRow.get(b) ?? 0;
+    return fa - fb;
+  });
 
-  const nodes: BucketNode[] = [];
-  let cursorY = PADDING;
-  for (const key of orderedNewestFirst) {
+  const nodes: BucketNode[] = keys.map((key) => {
     const count = counts.get(key) ?? 0;
-    const height =
-      BUCKET_MIN_HEIGHT +
-      Math.min(count, BUCKET_HEIGHT_COMMIT_CAP) * BUCKET_HEIGHT_PER_COMMIT;
-    nodes.push({
+    const rowStart = firstRow.get(key) ?? 0;
+    const rowEnd = lastRow.get(key) ?? rowStart;
+    const y = PADDING + rowStart * ROW_HEIGHT;
+    const height = (rowEnd - rowStart + 1) * ROW_HEIGHT;
+    return {
       id: key,
       x: PADDING,
-      y: cursorY,
+      y,
       width: BUCKET_WIDTH,
       height,
       count,
       color: quintileColor(count, sortedCounts),
       label: formatWeekLabel(isoWeekStart(key), count),
-    });
-    cursorY += height + BUCKET_GAP;
-  }
+    };
+  });
 
   return {
     tier: 0,
@@ -137,7 +136,7 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
     edges: [],
     bounds: {
       width: PADDING * 2 + BUCKET_WIDTH,
-      height: PADDING + cursorY,
+      height: PADDING * 2 + sorted.length * ROW_HEIGHT,
     },
   };
 }
