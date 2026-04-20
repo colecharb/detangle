@@ -1,8 +1,8 @@
-import type { Commit } from '../storage/commits';
-import type { Ref } from '../storage/refs';
-import { topoSort } from './topology';
-import { assignLanes } from './laneAssignment';
-import { isoWeekKey, isoWeekStart, weekKeysBetween } from './time';
+import type { Commit } from "../storage/commits";
+import type { Ref } from "../storage/refs";
+import { topoSort } from "./topology";
+import { assignLanes } from "./laneAssignment";
+import { isoWeekKey, isoWeekStart, weekKeysBetween } from "./time";
 import type {
   BucketNode,
   ClusterNode,
@@ -11,7 +11,7 @@ import type {
   GraphLayout,
   Tier,
   ViewMode,
-} from './types';
+} from "./types";
 
 export interface LayoutContext {
   prTitles?: Map<number, string>;
@@ -22,19 +22,19 @@ const LANE_WIDTH = 20;
 const NODE_RADIUS = 5;
 const PADDING = 40;
 
-const BUCKET_WIDTH = 2000;
+const BUCKET_WIDTH = 500;
 
-const BUCKET_PALETTE = ['#e5e5e5', '#bae6fd', '#60a5fa', '#2563eb', '#1e3a8a'];
+const BUCKET_PALETTE = ["#e5e5e5", "#bae6fd", "#60a5fa", "#2563eb", "#1e3a8a"];
 
 const LANE_PALETTE = [
-  '#2563eb',
-  '#16a34a',
-  '#dc2626',
-  '#9333ea',
-  '#ea580c',
-  '#0891b2',
-  '#ca8a04',
-  '#db2777',
+  "#2563eb",
+  "#16a34a",
+  "#dc2626",
+  "#9333ea",
+  "#ea580c",
+  "#0891b2",
+  "#ca8a04",
+  "#db2777",
 ];
 
 function laneColor(lane: number): string {
@@ -48,9 +48,10 @@ export function layoutGraph(
   tier: Tier,
   context?: LayoutContext,
 ): GraphLayout {
-  if (viewMode === 'swimlane') {
+  if (viewMode === "swimlane") {
     if (tier === 0) return tier0LayoutSwimLane(commits);
-    if (tier === 1) return tier1LayoutSwimLane(commits, refs, context?.prTitles);
+    if (tier === 1)
+      return tier1LayoutSwimLane(commits, refs, context?.prTitles);
     if (tier === 2) return tier2LayoutSwimLane(commits, refs);
   }
   throw new Error(`layout not implemented: viewMode=${viewMode} tier=${tier}`);
@@ -59,7 +60,9 @@ export function layoutGraph(
 function quintileColor(count: number, sortedCounts: number[]): string {
   if (count === 0 || sortedCounts.length === 0) return BUCKET_PALETTE[0];
   const q = (p: number) =>
-    sortedCounts[Math.min(sortedCounts.length - 1, Math.floor(p * sortedCounts.length))];
+    sortedCounts[
+      Math.min(sortedCounts.length - 1, Math.floor(p * sortedCounts.length))
+    ];
   const thresholds = [q(0.2), q(0.4), q(0.6), q(0.8)];
   for (let i = 0; i < thresholds.length; i++) {
     if (count <= thresholds[i]) return BUCKET_PALETTE[i + 1];
@@ -68,8 +71,18 @@ function quintileColor(count: number, sortedCounts: number[]): string {
 }
 
 const MONTHS_SHORT = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 function formatWeekLabel(weekStartUnix: number, count: number): string {
@@ -82,7 +95,7 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
   if (commits.length === 0) {
     return {
       tier: 0,
-      viewMode: 'swimlane',
+      viewMode: "swimlane",
       nodes: [],
       edges: [],
       bounds: { width: PADDING * 2 + BUCKET_WIDTH, height: PADDING * 2 },
@@ -131,7 +144,7 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
 
   return {
     tier: 0,
-    viewMode: 'swimlane',
+    viewMode: "swimlane",
     nodes,
     edges: [],
     bounds: {
@@ -153,7 +166,7 @@ interface ClusterAccumulator {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 export function tier1LayoutSwimLane(
@@ -187,7 +200,7 @@ export function tier1LayoutSwimLane(
           firstRow: row,
           lastRow: row,
           count: 1,
-          firstMessage: c.message.split('\n')[0],
+          firstMessage: c.message.split("\n")[0],
         });
       }
       currentRun = null;
@@ -211,7 +224,7 @@ export function tier1LayoutSwimLane(
         firstRow: row,
         lastRow: row,
         count: 1,
-        firstMessage: c.message.split('\n')[0],
+        firstMessage: c.message.split("\n")[0],
       };
       runClusters.push(currentRun);
     }
@@ -227,14 +240,14 @@ export function tier1LayoutSwimLane(
     let label: string;
     if (cluster.prNumber !== null) {
       const title = prTitles?.get(cluster.prNumber);
-      const suffix = `· ${cluster.count} commit${cluster.count === 1 ? '' : 's'}`;
+      const suffix = `· ${cluster.count} commit${cluster.count === 1 ? "" : "s"}`;
       label = title
         ? `#${cluster.prNumber} ${truncate(title, 40)} ${suffix}`
         : `#${cluster.prNumber} ${suffix}`;
     } else if (cluster.count === 1) {
       label = truncate(cluster.firstMessage, 40);
     } else {
-      label = `${cluster.authorName ?? 'unknown'} · ${cluster.count}`;
+      label = `${cluster.authorName ?? "unknown"} · ${cluster.count}`;
     }
 
     return {
@@ -251,7 +264,7 @@ export function tier1LayoutSwimLane(
 
   return {
     tier: 1,
-    viewMode: 'swimlane',
+    viewMode: "swimlane",
     nodes,
     edges: [],
     bounds: {
@@ -276,7 +289,7 @@ export function tier2LayoutSwimLane(
       y: PADDING + row * ROW_HEIGHT,
       radius: NODE_RADIUS,
       color: laneColor(lane),
-      label: c.message.split('\n')[0],
+      label: c.message.split("\n")[0],
       meta: {
         authorName: c.authorName,
         committedAt: c.committedAt,
@@ -299,14 +312,14 @@ export function tier2LayoutSwimLane(
       edges.push({
         from: { x: child.x, y: child.y },
         to: { x: parent.x, y: parent.y },
-        kind: isMerge ? 'merge' : 'parent',
+        kind: isMerge ? "merge" : "parent",
       });
     }
   }
 
   return {
     tier: 2,
-    viewMode: 'swimlane',
+    viewMode: "swimlane",
     nodes,
     edges,
     bounds: {
@@ -317,13 +330,13 @@ export function tier2LayoutSwimLane(
 }
 
 export function tier0LayoutAuthorLanes(_commits: Commit[]): GraphLayout {
-  throw new Error('not implemented (phase 4)');
+  throw new Error("not implemented (phase 4)");
 }
 
 export function tier1LayoutAuthorLanes(_commits: Commit[]): GraphLayout {
-  throw new Error('not implemented (phase 4)');
+  throw new Error("not implemented (phase 4)");
 }
 
 export function tier2LayoutAuthorLanes(_commits: Commit[]): GraphLayout {
-  throw new Error('not implemented (phase 4)');
+  throw new Error("not implemented (phase 4)");
 }
