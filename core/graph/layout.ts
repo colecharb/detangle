@@ -71,6 +71,17 @@ function quintileColor(count: number, sortedCounts: number[]): string {
   return BUCKET_PALETTE[4];
 }
 
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+function formatWeekLabel(weekStartUnix: number, count: number): string {
+  const d = new Date(weekStartUnix * 1000);
+  const date = `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return count > 0 ? `${date} · ${count}` : date;
+}
+
 export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
   if (commits.length === 0) {
     return {
@@ -114,6 +125,7 @@ export function tier0LayoutSwimLane(commits: Commit[]): GraphLayout {
       height,
       count,
       color: quintileColor(count, sortedCounts),
+      label: formatWeekLabel(isoWeekStart(key), count),
     });
     cursorY += height + BUCKET_GAP;
   }

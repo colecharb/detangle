@@ -214,6 +214,7 @@ export interface BucketNode {
   height: number;
   count: number;
   color: string;
+  label: string;        // human-readable week-start date + count, e.g. "Apr 6 · 12"
 }
 
 export interface Edge {

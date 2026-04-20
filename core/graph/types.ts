@@ -34,6 +34,7 @@ export interface BucketNode {
   height: number;
   count: number;
   color: string;
+  label: string;
 }
 
 export interface Edge {

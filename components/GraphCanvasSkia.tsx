@@ -41,6 +41,7 @@ interface Props {
 
 export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const font = useFont(labelFontSource, 12);
+  const bucketFont = useFont(labelFontSource, 48);
   const [_size, setSize] = useState({ width: 0, height: 0 });
   const wrapperRef = useRef<View | null>(null);
   const translateX = useSharedValue(0);
@@ -282,6 +283,17 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                       color={b.color}
                     />
                   ))}
+                  {bucketFont !== null &&
+                    bucketNodes.map((b) => (
+                      <SkiaText
+                        key={`t-${b.id}`}
+                        x={b.x + b.width + 12}
+                        y={b.y + b.height / 2 + 16}
+                        text={b.label}
+                        font={bucketFont}
+                        color="#171717"
+                      />
+                    ))}
                 </Group>
               )}
               {mountTier1 && (
