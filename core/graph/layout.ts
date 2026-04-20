@@ -22,7 +22,7 @@ const LANE_WIDTH = 20;
 const NODE_RADIUS = 5;
 const PADDING = 40;
 
-const BUCKET_WIDTH = 120;
+const BUCKET_WIDTH = 400;
 
 const BUCKET_PALETTE = ['#e5e5e5', '#bae6fd', '#60a5fa', '#2563eb', '#1e3a8a'];
 

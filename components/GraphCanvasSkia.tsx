@@ -29,7 +29,7 @@ import type {
 } from '@core/graph';
 import { TIER_THRESHOLDS } from '@core/graph';
 
-const MIN_SCALE = 0.2;
+const MIN_SCALE = 0.05;
 const MAX_SCALE = 5;
 const LABEL_MIN_SCALE = 0.8;
 const TAP_SLOP = 6;
@@ -41,7 +41,7 @@ interface Props {
 
 export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
   const font = useFont(labelFontSource, 12);
-  const bucketFont = useFont(labelFontSource, 48);
+  const bucketFont = useFont(labelFontSource, 72);
   const [_size, setSize] = useState({ width: 0, height: 0 });
   const wrapperRef = useRef<View | null>(null);
   const translateX = useSharedValue(0);
@@ -285,12 +285,12 @@ export default function GraphCanvasSkia({ layouts, onCommitTap }: Props) {
                   ))}
                   {bucketFont !== null &&
                     bucketNodes
-                      .filter((b) => b.height >= 56)
+                      .filter((b) => b.height >= 84)
                       .map((b) => (
                         <SkiaText
                           key={`t-${b.id}`}
-                          x={b.x + b.width + 12}
-                          y={b.y + b.height / 2 + 18}
+                          x={b.x + b.width + 16}
+                          y={b.y + b.height / 2 + 26}
                           text={b.label}
                           font={bucketFont}
                           color="#171717"
